@@ -30,11 +30,11 @@ public static class WallMeshCreator
 
         var tess = new Tess();
 
-        tess.AddContour(ToContourVertices(outer), ContourOrientation.Clockwise);
+        tess.AddContour(ToContourVertices(outer), ContourOrientation.CounterClockwise);
 
         foreach (var hole in inner)
         {
-            tess.AddContour(ToContourVertices(hole), ContourOrientation.CounterClockwise);
+            tess.AddContour(ToContourVertices(hole), ContourOrientation.Clockwise);
         }
 
         tess.Tessellate(WindingRule.EvenOdd, ElementType.Polygons, 3);
