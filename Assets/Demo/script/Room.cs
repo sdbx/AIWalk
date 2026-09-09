@@ -24,7 +24,7 @@ public class DoorData
 
 
 
-[RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
+[RequireComponent(typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider))]
 public class Room : MonoBehaviour
 {
     [SerializeField] private float size = 1f;
@@ -84,6 +84,9 @@ public class Room : MonoBehaviour
             mesh.triangles = mesh.triangles.Concat(triangles.Select(t => t + vertexOffset)).ToArray();
         }
 
+        //add a MeshCollider to the room
+        GetComponent<MeshCollider>().sharedMesh = mesh;
+        Physics.BakeMesh(mesh.GetEntityId(), false);
         GetComponent<MeshFilter>().sharedMesh = mesh;
         mesh.RecalculateNormals();
         mesh.RecalculateBounds();
