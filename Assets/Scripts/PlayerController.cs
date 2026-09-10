@@ -1,9 +1,15 @@
+using System;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(Rigidbody))]
 public class PlayerController : MonoBehaviour
 {
+  public event Action Jumped;
+  public event Action<float> Landed;
+
+  public bool IsGrounded => isGrounded;
+
   [Header("Movement Settings")]
   [SerializeField] private float moveSpeed = 8f;
 
@@ -34,6 +40,8 @@ public class PlayerController : MonoBehaviour
   private Vector2 lookInput;
   private float verticalRotation;
   private bool isGrounded;
+  private bool wasGrounded;
+  private float lastAirborneSpeed;
   private float jumpRequestedTime = float.NegativeInfinity;
   private float lastGroundedTime = float.NegativeInfinity;
 
@@ -127,6 +135,13 @@ public class PlayerController : MonoBehaviour
 
     if (isGrounded)
       lastGroundedTime = Time.time;
+    else
+      lastAirborneSpeed = rb.linearVelocity.y;
+
+    if (isGrounded && !wasGrounded)
+      Landed?.Invoke(Mathf.Abs(lastAirborneSpeed));
+
+    wasGrounded = isGrounded;
   }
 
   private Vector3 GetGroundCheckPosition()
@@ -149,6 +164,7 @@ public class PlayerController : MonoBehaviour
     jumpRequestedTime = float.NegativeInfinity;
     lastGroundedTime = float.NegativeInfinity;
     rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+    Jumped?.Invoke();
   }
 
   private void MovePlayer()

@@ -233,9 +233,9 @@ def robot_arm_points(side):
 
 
 def fps_arm_points(side):
-    pivot = Vector((side * 0.30, -0.10, -0.38))
-    elbow = Vector((side * 0.35, -0.42, -0.44))
-    wrist = Vector((side * 0.24, -0.80, -0.26))
+    pivot = Vector((side * 0.46, -0.10, -0.38))
+    elbow = Vector((side * 0.58, -0.42, -0.44))
+    wrist = Vector((side * 0.46, -0.80, -0.26))
     return pivot, elbow, wrist
 
 
