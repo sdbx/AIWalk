@@ -387,6 +387,7 @@ MonoBehaviour:
   gamepadSensitivity: 120
   minLookAngle: -80
   maxLookAngle: 80
+  visualRoot: {fileID: 1134905409}
   groundMask:
     serializedVersion: 2
     m_Bits: 4294967295
@@ -901,6 +902,16 @@ MonoBehaviour:
   interactArmPitch: -10
   interactForearmPitch: 16
   interactHandPitch: 26
+  jumpDip: 0.05
+  jumpPitch: 7
+  jumpDuration: 0.3
+  airLag: 0.006
+  airLagMax: 0.045
+  landDip: 0.09
+  landPitch: 12
+  landHandPitch: 18
+  landDuration: 0.45
+  referenceImpactSpeed: 7
 --- !u!1 &1027597492
 GameObject:
   m_ObjectHideFlags: 0

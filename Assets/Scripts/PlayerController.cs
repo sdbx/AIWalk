@@ -25,6 +25,10 @@ public class PlayerController : MonoBehaviour
   [SerializeField] private float minLookAngle = -80f;
   [SerializeField] private float maxLookAngle = 80f;
 
+  [Header("Visual")]
+  [Tooltip("Third-person body root that receives yaw only (e.g. RobotPlayer).")]
+  [SerializeField] private Transform visualRoot;
+
   [Header("Ground Check")]
   [SerializeField] private LayerMask groundMask = ~0;
   [SerializeField] private float groundCheckRadius = 0.4f;
@@ -39,6 +43,7 @@ public class PlayerController : MonoBehaviour
   private Vector2 moveInput;
   private Vector2 lookInput;
   private float verticalRotation;
+  private float yawRotation;
   private bool isGrounded;
   private bool wasGrounded;
   private float lastAirborneSpeed;
@@ -61,6 +66,8 @@ public class PlayerController : MonoBehaviour
 
     float pitch = playerCamera.localEulerAngles.x;
     verticalRotation = pitch > 180f ? pitch - 360f : pitch;
+    float yaw = playerCamera.localEulerAngles.y;
+    yawRotation = yaw > 180f ? yaw - 360f : yaw;
   }
 
   void Start()
@@ -107,14 +114,12 @@ public class PlayerController : MonoBehaviour
     if (playerCamera == null)
       return;
 
-    if (lookInput.x != 0f)
-    {
-      transform.Rotate(0f, lookInput.x, 0f, Space.Self);
-      Physics.SyncTransforms();
-    }
-
+    yawRotation += lookInput.x;
     verticalRotation = Mathf.Clamp(verticalRotation - lookInput.y, minLookAngle, maxLookAngle);
-    playerCamera.localRotation = Quaternion.Euler(verticalRotation, 0f, 0f);
+    playerCamera.localRotation = Quaternion.Euler(verticalRotation, yawRotation, 0f);
+
+    if (visualRoot != null)
+      visualRoot.localRotation = Quaternion.Euler(0f, yawRotation, 0f);
   }
 
   private void UpdateGroundedState()
@@ -170,7 +175,7 @@ public class PlayerController : MonoBehaviour
   private void MovePlayer()
   {
     Vector2 input = Vector2.ClampMagnitude(moveInput, 1f);
-    Vector3 moveDir = transform.right * input.x + transform.forward * input.y;
+    Vector3 moveDir = Quaternion.Euler(0f, yawRotation, 0f) * new Vector3(input.x, 0f, input.y);
     Vector3 targetVelocity = new Vector3(moveDir.x * moveSpeed, rb.linearVelocity.y, moveDir.z * moveSpeed);
     rb.linearVelocity = targetVelocity;
   }
