@@ -7,29 +7,30 @@ public class Interactable : MonoBehaviour
   public UnityEvent OnCursorEnter;
   public UnityEvent OnCursorExit;
 
-  [SerializeField]
-  private GameObject outlineObject;
-
   public void Interact()
   {
     OnInteract.Invoke();
   }
 
-  LayerMask startLayer;
-  void Start()
-  {
-    if (outlineObject == null) outlineObject = gameObject;
-    startLayer = outlineObject.layer;
-  }
-
   public void EnterCursor()
   {
     OnCursorEnter.Invoke();
-    outlineObject.layer = LayerMask.NameToLayer("Outline");
+    SetLayerRecursively(gameObject, "Outline");
   }
   public void ExitCursor()
   {
     OnCursorExit.Invoke();
-    outlineObject.layer = startLayer;
+    SetLayerRecursively(gameObject, "Default");
+  }
+
+  void SetLayerRecursively(GameObject root, string layerName)
+  {
+    int layer = LayerMask.NameToLayer(layerName);
+    root.layer = layer;
+
+    foreach (Transform child in root.GetComponentsInChildren<Transform>())
+    {
+      child.gameObject.layer = layer;
+    }
   }
 }
