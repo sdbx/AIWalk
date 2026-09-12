@@ -13,13 +13,33 @@ public class PlayerInteraction : MonoBehaviour
   {
     if (!context.started) return;
     Ray ray = new(camera.transform.position, camera.transform.forward);
-
-    Debug.DrawLine(ray.origin, ray.origin + ray.direction * interactDistance);
-
     if (!Physics.Raycast(ray, out RaycastHit hit, interactDistance)) return;
-    Debug.Log(hit);
     if (!hit.collider.TryGetComponent<Interactable>(out var interactable)) return;
 
     interactable.Interact();
+  }
+
+  Interactable prevInteractable;
+
+  void Update()
+  {
+    Ray ray = new(camera.transform.position, camera.transform.forward);
+    if (Physics.Raycast(ray, out RaycastHit hit, interactDistance)
+     && hit.collider.TryGetComponent<Interactable>(out var interactable))
+    {
+      if (prevInteractable == null)
+      {
+        interactable.EnterCursor();
+      }
+      prevInteractable = interactable;
+    } else
+    {
+      if (prevInteractable != null)
+      {
+        prevInteractable.ExitCursor();
+      }
+      prevInteractable = null;
+    }
+
   }
 }
