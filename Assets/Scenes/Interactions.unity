@@ -1300,6 +1300,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Bulb
       objectReference: {fileID: 0}
+    - target: {fileID: 1671653014991251924, guid: 54aad85976754f641838fd12da673a15, type: 3}
+      propertyPath: m_Layer
+      value: 8
+      objectReference: {fileID: 0}
     - target: {fileID: 2051731732615656302, guid: 54aad85976754f641838fd12da673a15, type: 3}
       propertyPath: m_LocalPosition.x
       value: 2.6138518
