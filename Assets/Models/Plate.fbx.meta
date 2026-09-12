@@ -40,7 +40,7 @@ ModelImporter:
     useSRGBMaterialColor: 1
     sortHierarchyByName: 1
     preBakeConvexCollisionMesh: 0
-    preBakeTriangleCollisionMesh: 0
+    preBakeTriangleCollisionMesh: 1
     importPhysicalCameras: 1
     importVisibility: 1
     importBlendShapes: 1
@@ -97,7 +97,7 @@ ModelImporter:
     armStretch: 0.05
     legStretch: 0.05
     feetSpacing: 0
-    globalScale: 1
+    globalScale: 100
     rootMotionBoneName: 
     hasTranslationDoF: 0
     hasExtraRoot: 0

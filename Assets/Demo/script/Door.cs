@@ -28,20 +28,22 @@ public class Door : MonoBehaviour
         initLeftPosition = left.localPosition;
         initRightPosition = right.localPosition;
     }
-    
+
 
     void Update()
     {
-        if (isOpen)
-        {
-            CurrentDistance = distance;
-        }
-        else
-        {
-            CurrentDistance = 0;
-        }
-        
-        left.localPosition = Vector3.Lerp(left.localPosition, new Vector3(-CurrentDistance, 0, 0), Time.deltaTime * speed);
-        right.localPosition = Vector3.Lerp(right.localPosition, new Vector3(CurrentDistance, 0, 0), Time.deltaTime * speed);
+        Vector3 leftTarget = isOpen
+            ? initLeftPosition + Vector3.left * distance
+            : initLeftPosition;
+
+        Vector3 rightTarget = isOpen
+            ? initRightPosition + Vector3.right * distance
+            : initRightPosition;
+
+        left.localPosition =
+            Vector3.Lerp(left.localPosition, leftTarget, Time.deltaTime * speed);
+
+        right.localPosition =
+            Vector3.Lerp(right.localPosition, rightTarget, Time.deltaTime * speed);
     }
 }
