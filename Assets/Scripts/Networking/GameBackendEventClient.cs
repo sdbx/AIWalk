@@ -118,10 +118,11 @@ namespace AIWalk.Networking
             T payload,
             long? sequence = null,
             string requestId = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool importantSend = false)
         {
             string payloadJson = payload == null ? "null" : JsonUtility.ToJson(payload);
-            return PublishRawAsync(eventId, audience, payloadJson, sequence, requestId, cancellationToken);
+            return PublishRawAsync(eventId, audience, payloadJson, sequence, requestId, cancellationToken, importantSend);
         }
 
         public Task PublishRawAsync(
@@ -130,7 +131,8 @@ namespace AIWalk.Networking
             string payloadJson = "null",
             long? sequence = null,
             string requestId = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool importantSend = false)
         {
             return SendAsync(
                 eventId,
@@ -138,7 +140,8 @@ namespace AIWalk.Networking
                 payloadJson,
                 sequence,
                 requestId,
-                cancellationToken);
+                cancellationToken,
+                importantSend);
         }
 
         public Task SendToPeerAsync<T>(
@@ -147,10 +150,11 @@ namespace AIWalk.Networking
             T payload,
             long? sequence = null,
             string requestId = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool importantSend = false)
         {
             string payloadJson = payload == null ? "null" : JsonUtility.ToJson(payload);
-            return SendToPeerRawAsync(eventId, peerId, payloadJson, sequence, requestId, cancellationToken);
+            return SendToPeerRawAsync(eventId, peerId, payloadJson, sequence, requestId, cancellationToken, importantSend);
         }
 
         public Task SendToPeerRawAsync(
@@ -159,13 +163,14 @@ namespace AIWalk.Networking
             string payloadJson = "null",
             long? sequence = null,
             string requestId = null,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            bool importantSend = false)
         {
             if (string.IsNullOrWhiteSpace(peerId))
                 throw new ArgumentException("Peer ID is required.", nameof(peerId));
 
             string targetJson = "{\"peerId\":" + Quote(peerId) + "}";
-            return SendAsync(eventId, targetJson, payloadJson, sequence, requestId, cancellationToken);
+            return SendAsync(eventId, targetJson, payloadJson, sequence, requestId, cancellationToken, importantSend);
         }
 
         public void Dispose()
@@ -184,7 +189,8 @@ namespace AIWalk.Networking
             string payloadJson,
             long? sequence,
             string requestId,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool importantSend)
         {
             ThrowIfDisposed();
             ValidateEventId(eventId);
@@ -203,7 +209,7 @@ namespace AIWalk.Networking
             json.Append(",\"sentAt\":")
                 .Append(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds().ToString(CultureInfo.InvariantCulture));
             json.Append(",\"payload\":").Append(payloadJson).Append('}');
-            return transport.SendTextAsync(json.ToString(), cancellationToken);
+            return transport.SendTextAsync(json.ToString(), importantSend, cancellationToken);
         }
 
         private void HandleTextMessage(string rawJson)

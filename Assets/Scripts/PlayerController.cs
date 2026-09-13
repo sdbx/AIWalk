@@ -50,6 +50,8 @@ public class PlayerController : MonoBehaviour
   private float jumpRequestedTime = float.NegativeInfinity;
   private float lastGroundedTime = float.NegativeInfinity;
 
+  private NetworkClient networkClient;
+
   void Awake()
   {
     rb = GetComponent<Rigidbody>();

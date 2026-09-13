@@ -1,5 +1,8 @@
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.WebSockets;
 using System.Threading;
@@ -14,23 +17,42 @@ namespace AIWalk.Networking
     /// </summary>
     public sealed class GameBackendWebSocketClient : IDisposable
     {
+        private const byte ImportantMarker = (byte)'!';
+        private const byte RealtimeProtocolVersion = 1;
+        private const byte PlayerInputKind = 1;
+        private const byte PhysicsSnapshotKind = 2;
+        private const int RealtimeHeaderBytes = 16;
+        public const int PhysicsObjectIdBytes = 32;
         private readonly object stateLock = new();
+        private readonly object physicsHandlersLock = new();
         private readonly SemaphoreSlim lifecycleLock = new(1, 1);
         private readonly SemaphoreSlim sendLock = new(1, 1);
         private readonly ConcurrentQueue<QueuedEvent> receivedEvents = new();
+        private readonly Dictionary<string, List<Action<byte[]>>> physicsSnapshotHandlers = new(StringComparer.Ordinal);
         private readonly int maxMessageBytes;
+        private readonly long normalEventLifetimeTicks;
+        private readonly long importantEventLifetimeTicks;
 
         private ClientWebSocket socket;
         private CancellationTokenSource receiveCancellation;
         private Task receiveTask;
         private bool disposed;
 
-        public GameBackendWebSocketClient(int maxMessageBytes = 256 * 1024)
+        public GameBackendWebSocketClient(
+            int maxMessageBytes = 256 * 1024,
+            double normalEventLifetimeSeconds = 1.0,
+            double importantEventLifetimeSeconds = 5.0)
         {
             if (maxMessageBytes < 1024)
                 throw new ArgumentOutOfRangeException(nameof(maxMessageBytes));
+            if (normalEventLifetimeSeconds <= 0)
+                throw new ArgumentOutOfRangeException(nameof(normalEventLifetimeSeconds));
+            if (importantEventLifetimeSeconds <= 0)
+                throw new ArgumentOutOfRangeException(nameof(importantEventLifetimeSeconds));
 
             this.maxMessageBytes = maxMessageBytes;
+            normalEventLifetimeTicks = SecondsToStopwatchTicks(normalEventLifetimeSeconds);
+            importantEventLifetimeTicks = SecondsToStopwatchTicks(importantEventLifetimeSeconds);
         }
 
         public event Action Connected;
@@ -49,6 +71,41 @@ namespace AIWalk.Networking
         }
 
         public int PendingEventCount => receivedEvents.Count;
+
+        public IDisposable SubscribePhysicsSnapshot(string objectId, Action<byte[]> handler)
+        {
+            ThrowIfDisposed();
+            ValidatePhysicsObjectId(objectId);
+            if (handler == null)
+                throw new ArgumentNullException(nameof(handler));
+
+            lock (physicsHandlersLock)
+            {
+                if (!physicsSnapshotHandlers.TryGetValue(objectId, out var handlers))
+                {
+                    handlers = new List<Action<byte[]>>();
+                    physicsSnapshotHandlers.Add(objectId, handlers);
+                }
+                handlers.Add(handler);
+            }
+
+            return new PhysicsSnapshotSubscription(this, objectId, handler);
+        }
+
+        public void UnsubscribePhysicsSnapshot(string objectId, Action<byte[]> handler)
+        {
+            if (string.IsNullOrEmpty(objectId) || handler == null)
+                return;
+
+            lock (physicsHandlersLock)
+            {
+                if (!physicsSnapshotHandlers.TryGetValue(objectId, out var handlers))
+                    return;
+                handlers.Remove(handler);
+                if (handlers.Count == 0)
+                    physicsSnapshotHandlers.Remove(objectId);
+            }
+        }
 
         public static Uri BuildServerUri(string backendWebSocketUrl)
         {
@@ -117,19 +174,81 @@ namespace AIWalk.Networking
 
         public Task SendTextAsync(string message, CancellationToken cancellationToken = default)
         {
-            if (message == null)
-                throw new ArgumentNullException(nameof(message));
-
-            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(message);
-            return SendAsync(bytes, WebSocketMessageType.Text, cancellationToken);
+            return SendTextAsync(message, false, cancellationToken);
         }
 
-        public Task SendBinaryAsync(byte[] message, CancellationToken cancellationToken = default)
+        public Task SendTextAsync(
+            string message,
+            bool importantSend,
+            CancellationToken cancellationToken = default)
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
 
-            return SendAsync(message, WebSocketMessageType.Binary, cancellationToken);
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(message);
+            return SendAsync(bytes, WebSocketMessageType.Text, importantSend, cancellationToken);
+        }
+
+        public Task SendBinaryAsync(byte[] message, CancellationToken cancellationToken = default)
+        {
+            return SendBinaryAsync(message, false, cancellationToken);
+        }
+
+        public Task SendBinaryAsync(
+            byte[] message,
+            bool importantSend,
+            CancellationToken cancellationToken = default)
+        {
+            if (message == null)
+                throw new ArgumentNullException(nameof(message));
+
+            return SendAsync(message, WebSocketMessageType.Binary, importantSend, cancellationToken);
+        }
+
+        public Task SendPlayerInputAsync(
+            byte[] payload,
+            uint sequence,
+            bool importantSend = false,
+            CancellationToken cancellationToken = default)
+        {
+            return SendRealtimeAsync(
+                PlayerInputKind,
+                payload,
+                sequence,
+                importantSend,
+                cancellationToken);
+        }
+
+        public Task SendPhysicsSnapshotAsync(
+            string objectId,
+            byte[] payload,
+            uint sequence,
+            bool importantSend = false,
+            CancellationToken cancellationToken = default)
+        {
+            if (objectId == null)
+                throw new ArgumentNullException(nameof(objectId));
+            if (payload == null)
+                throw new ArgumentNullException(nameof(payload));
+
+            byte[] objectIdBytes = System.Text.Encoding.UTF8.GetBytes(objectId);
+            if (objectIdBytes.Length != PhysicsObjectIdBytes)
+            {
+                throw new ArgumentException(
+                    $"Physics object ID must be exactly {PhysicsObjectIdBytes} UTF-8 bytes.",
+                    nameof(objectId));
+            }
+
+            var snapshotPayload = new byte[PhysicsObjectIdBytes + payload.Length];
+            Buffer.BlockCopy(objectIdBytes, 0, snapshotPayload, 0, PhysicsObjectIdBytes);
+            Buffer.BlockCopy(payload, 0, snapshotPayload, PhysicsObjectIdBytes, payload.Length);
+
+            return SendRealtimeAsync(
+                PhysicsSnapshotKind,
+                snapshotPayload,
+                sequence,
+                importantSend,
+                cancellationToken);
         }
 
         /// <summary>
@@ -145,6 +264,10 @@ namespace AIWalk.Networking
             while (processed < maxEvents && receivedEvents.TryDequeue(out QueuedEvent queued))
             {
                 processed++;
+                long lifetime = queued.Important ? importantEventLifetimeTicks : normalEventLifetimeTicks;
+                if (Stopwatch.GetTimestamp() - queued.EnqueuedAt > lifetime)
+                    continue;
+
                 switch (queued.Type)
                 {
                     case QueuedEventType.Connected:
@@ -154,7 +277,7 @@ namespace AIWalk.Networking
                         InvokeSafely(TextMessageReceived, queued.Text);
                         break;
                     case QueuedEventType.Binary:
-                        InvokeSafely(BinaryMessageReceived, queued.Binary);
+                        DispatchBinary(queued.Binary);
                         break;
                     case QueuedEventType.Disconnected:
                         InvokeSafely(Disconnected, queued.CloseStatus, queued.CloseDescription);
@@ -233,6 +356,8 @@ namespace AIWalk.Networking
 
             CleanupConnection();
             while (receivedEvents.TryDequeue(out _)) { }
+            lock (physicsHandlersLock)
+                physicsSnapshotHandlers.Clear();
             lifecycleLock.Dispose();
             sendLock.Dispose();
         }
@@ -240,10 +365,20 @@ namespace AIWalk.Networking
         private async Task SendAsync(
             byte[] message,
             WebSocketMessageType messageType,
+            bool importantSend,
             CancellationToken cancellationToken)
         {
-            if (message.Length > maxMessageBytes)
+            int outgoingLength = message.Length + (importantSend ? 1 : 0);
+            if (outgoingLength > maxMessageBytes)
                 throw new InvalidOperationException($"Message exceeds the {maxMessageBytes}-byte limit.");
+
+            byte[] outgoing = message;
+            if (importantSend)
+            {
+                outgoing = new byte[outgoingLength];
+                outgoing[0] = ImportantMarker;
+                Buffer.BlockCopy(message, 0, outgoing, 1, message.Length);
+            }
 
             await sendLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
@@ -257,7 +392,7 @@ namespace AIWalk.Networking
                     throw new InvalidOperationException("The WebSocket is not connected.");
 
                 await current.SendAsync(
-                    new ArraySegment<byte>(message),
+                    new ArraySegment<byte>(outgoing),
                     messageType,
                     true,
                     cancellationToken).ConfigureAwait(false);
@@ -266,6 +401,29 @@ namespace AIWalk.Networking
             {
                 sendLock.Release();
             }
+        }
+
+        private Task SendRealtimeAsync(
+            byte kind,
+            byte[] payload,
+            uint sequence,
+            bool importantSend,
+            CancellationToken cancellationToken)
+        {
+            if (payload == null)
+                throw new ArgumentNullException(nameof(payload));
+
+            var frame = new byte[RealtimeHeaderBytes + payload.Length];
+            frame[0] = RealtimeProtocolVersion;
+            frame[1] = kind;
+            BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(2, 2), 0);
+            BinaryPrimitives.WriteUInt32LittleEndian(frame.AsSpan(4, 4), sequence);
+            BinaryPrimitives.WriteInt64LittleEndian(
+                frame.AsSpan(8, 8),
+                BitConverter.DoubleToInt64Bits(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+            Buffer.BlockCopy(payload, 0, frame, RealtimeHeaderBytes, payload.Length);
+
+            return SendBinaryAsync(frame, importantSend, cancellationToken);
         }
 
         private async Task ReceiveLoopAsync(ClientWebSocket current, CancellationToken cancellationToken)
@@ -304,10 +462,29 @@ namespace AIWalk.Networking
                         break;
                     
                     byte[] payload = message.ToArray();
+                    bool important = payload.Length > 0 && payload[0] == ImportantMarker;
+                    int payloadOffset = important ? 1 : 0;
+                    if (payloadOffset == payload.Length)
+                        throw new InvalidDataException("Received an empty important message.");
+
                     if (result.MessageType == WebSocketMessageType.Text)
-                        receivedEvents.Enqueue(QueuedEvent.ForText(System.Text.Encoding.UTF8.GetString(payload)));
+                    {
+                        string text = System.Text.Encoding.UTF8.GetString(
+                            payload,
+                            payloadOffset,
+                            payload.Length - payloadOffset);
+                        receivedEvents.Enqueue(QueuedEvent.ForText(text, important));
+                    }
                     else if (result.MessageType == WebSocketMessageType.Binary)
-                        receivedEvents.Enqueue(QueuedEvent.ForBinary(payload));
+                    {
+                        if (important)
+                        {
+                            var binary = new byte[payload.Length - 1];
+                            Buffer.BlockCopy(payload, 1, binary, 0, binary.Length);
+                            payload = binary;
+                        }
+                        receivedEvents.Enqueue(QueuedEvent.ForBinary(payload, important));
+                    }
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -360,6 +537,75 @@ namespace AIWalk.Networking
         {
             if (disposed)
                 throw new ObjectDisposedException(nameof(GameBackendWebSocketClient));
+        }
+
+        private void DispatchBinary(byte[] frame)
+        {
+            InvokeSafely(BinaryMessageReceived, frame);
+
+            if (frame.Length < RealtimeHeaderBytes + PhysicsObjectIdBytes || frame[1] != PhysicsSnapshotKind)
+                return;
+
+            string objectId = System.Text.Encoding.UTF8.GetString(
+                frame,
+                RealtimeHeaderBytes,
+                PhysicsObjectIdBytes);
+
+            Action<byte[]>[] handlers = null;
+            lock (physicsHandlersLock)
+            {
+                if (physicsSnapshotHandlers.TryGetValue(objectId, out var registered))
+                    handlers = registered.ToArray();
+            }
+
+            if (handlers == null)
+                return;
+
+            int payloadOffset = RealtimeHeaderBytes + PhysicsObjectIdBytes;
+            var payload = new byte[frame.Length - payloadOffset];
+            Buffer.BlockCopy(frame, payloadOffset, payload, 0, payload.Length);
+            foreach (var handler in handlers)
+                InvokeSafely(handler, payload);
+        }
+
+        private static void ValidatePhysicsObjectId(string objectId)
+        {
+            if (objectId == null)
+                throw new ArgumentNullException(nameof(objectId));
+            if (System.Text.Encoding.UTF8.GetByteCount(objectId) != PhysicsObjectIdBytes)
+            {
+                throw new ArgumentException(
+                    $"Physics object ID must be exactly {PhysicsObjectIdBytes} UTF-8 bytes.",
+                    nameof(objectId));
+            }
+        }
+
+        private static long SecondsToStopwatchTicks(double seconds)
+        {
+            return checked((long)(seconds * Stopwatch.Frequency));
+        }
+
+        private sealed class PhysicsSnapshotSubscription : IDisposable
+        {
+            private GameBackendWebSocketClient owner;
+            private readonly string objectId;
+            private readonly Action<byte[]> handler;
+
+            public PhysicsSnapshotSubscription(
+                GameBackendWebSocketClient owner,
+                string objectId,
+                Action<byte[]> handler)
+            {
+                this.owner = owner;
+                this.objectId = objectId;
+                this.handler = handler;
+            }
+
+            public void Dispose()
+            {
+                var current = Interlocked.Exchange(ref owner, null);
+                current?.UnsubscribePhysicsSnapshot(objectId, handler);
+            }
         }
 
         private void InvokeSafely(Action callback)
@@ -424,13 +670,18 @@ namespace AIWalk.Networking
             public WebSocketCloseStatus? CloseStatus;
             public string CloseDescription;
             public Exception Error;
+            public bool Important;
+            public long EnqueuedAt = Stopwatch.GetTimestamp();
 
-            public static QueuedEvent ForConnected() => new() { Type = QueuedEventType.Connected };
-            public static QueuedEvent ForText(string text) => new() { Type = QueuedEventType.Text, Text = text };
-            public static QueuedEvent ForBinary(byte[] binary) => new() { Type = QueuedEventType.Binary, Binary = binary };
+            public static QueuedEvent ForConnected() => new() { Type = QueuedEventType.Connected, Important = true };
+            public static QueuedEvent ForText(string text, bool important) =>
+                new() { Type = QueuedEventType.Text, Text = text, Important = important };
+            public static QueuedEvent ForBinary(byte[] binary, bool important) =>
+                new() { Type = QueuedEventType.Binary, Binary = binary, Important = important };
             public static QueuedEvent ForDisconnected(WebSocketCloseStatus? status, string description) =>
-                new() { Type = QueuedEventType.Disconnected, CloseStatus = status, CloseDescription = description };
-            public static QueuedEvent ForError(Exception error) => new() { Type = QueuedEventType.Error, Error = error };
+                new() { Type = QueuedEventType.Disconnected, CloseStatus = status, CloseDescription = description, Important = true };
+            public static QueuedEvent ForError(Exception error) =>
+                new() { Type = QueuedEventType.Error, Error = error, Important = true };
         }
     }
 }

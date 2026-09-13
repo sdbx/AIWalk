@@ -1,6 +1,15 @@
+using System;
 using AIWalk.Networking;
 using UnityEngine;
 using UnityEngine.Events;
+
+[Serializable]
+public class ConnectionReadyPayload
+{
+    public string peerId;
+    public int peerSlot;
+    public string role;
+}
 
 public class NetworkClient : MonoBehaviour
 {
@@ -8,10 +17,32 @@ public class NetworkClient : MonoBehaviour
 
     private GameBackendWebSocketClient socketClient;
     private GameBackendEventClient eventClient;
+    [field:SerializeField]
+    public UnityEvent onServerConnected{get;private set;} = new UnityEvent();
 
     [SerializeField] private string backendUrl = "ws://localhost:8080";
     [SerializeField] private int maxMessageBytes = 256 * 1024;
-    private bool initialized = false;
+
+    public bool IsHost => role == "host";
+
+    public bool IsConnected => socketClient != null && socketClient.IsConnected ;
+
+    public string peerId { get; private set; }
+    public int peerSlot { get; private set; }
+    public string role { get; private set; }
+
+
+    public static void GetInstance(ref NetworkClient custom)
+    {
+        if (custom == null)
+        {
+            if (Instance == null)
+            {
+                throw new Exception("NetworkClient instance is not set. Please ensure that a NetworkClient component is present in the scene.");
+            }
+            custom = Instance;
+        }
+    }
 
     private void Awake()
     {
@@ -21,9 +52,30 @@ public class NetworkClient : MonoBehaviour
         }
         socketClient = new GameBackendWebSocketClient(256 * 1024);
         eventClient = new GameBackendEventClient(socketClient);
+        InitSubcriptions();
     }
 
-    public void SendEvent(string eventName, EventAudience audience, string data)
+    private void InitSubcriptions()
+    {   
+        eventClient.Subscribe("connection.ready", OnServerReady);
+
+        eventClient.Subscribe("host.promoted", data => {
+            role = "host";
+        });
+    }
+
+    private void OnServerReady(GameBackendEvent data)
+    {
+        var payload = data.DeserializePayload<ConnectionReadyPayload>();
+        peerId = payload.peerId;
+        peerSlot = payload.peerSlot;
+        role = payload.role;
+        Debug.Log("I am " + role);
+        Debug.Log("Connected to server Ready.");
+        onServerConnected.Invoke();
+    }
+
+    public void SendEvent<T>(string eventName, EventAudience audience, T data)
     {
         if (socketClient.IsConnected)
         {
@@ -35,6 +87,27 @@ public class NetworkClient : MonoBehaviour
         }
     }
 
+    public void SendEventTo<T>(string eventName,string peerId,T data)
+    {
+        if (socketClient.IsConnected)
+        {
+            eventClient.SendToPeerAsync(eventName, peerId, data);
+        }
+        else
+        {
+            Debug.LogWarning("Cannot send event. Not connected to server.");
+        }
+    }
+
+    public void SendPhyscis(string id,byte[] payload)
+    {
+        socketClient.SendPhysicsSnapshotAsync(id,payload,0);
+    }
+
+    public void SubcribePhysics(string id,Action<byte[]> callback)
+    {
+        socketClient.SubscribePhysicsSnapshot(id,callback);
+    }
     public void SubscribeUnityEvent(string eventName, UnityEvent unityEvent)
     {
         eventClient.Subscribe(eventName, (e)=>{unityEvent.Invoke();});
@@ -57,28 +130,23 @@ public class NetworkClient : MonoBehaviour
 
     private System.Collections.IEnumerator ConnectToServer()
     {
-        yield return socketClient.ConnectAsync(GameBackendWebSocketClient.BuildServerUri(backendUrl));
-    }
-
-    private void OnConnected()
-    {
-        Debug.Log("Connected to server.");
-
-        eventClient.Subscribe("example_event", (data) =>
+        var task = socketClient.ConnectAsync(GameBackendWebSocketClient.BuildServerUri(backendUrl));
+        yield return new WaitUntil(() => task.IsCompleted);
+        if (socketClient.IsConnected)
         {
-            Debug.Log($"Received event: {data}");
-        });
+            Debug.Log("Successfully connected to server.");
+        }
+        else
+        {
+            Debug.LogError($"Failed to connect to server: {task.Exception}");
+        }
     }
+
 
     private void Update()
     {
         if(socketClient.IsConnected)
         {
-            if(!initialized)
-            {
-                initialized = true;
-                OnConnected();
-            }
             UpdateServers();
         }
     }
@@ -86,5 +154,14 @@ public class NetworkClient : MonoBehaviour
     private void UpdateServers()    
     {
         socketClient.Pump();
+    }
+
+    private void OnDestroy()
+    {
+        eventClient?.Dispose();
+        socketClient?.Dispose();
+
+        if (ReferenceEquals(Instance, this))
+            Instance = null;
     }
 }
