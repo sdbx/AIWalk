@@ -336,7 +336,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d3727ab797544024bbbcdc566e83b730, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NetworkIdentity
-  id: bulb-1
+  id: b2857d2690544997a35e7aa7ccf0eb7e
 --- !u!1001 &488385088
 PrefabInstance:
   m_ObjectHideFlags: 0
