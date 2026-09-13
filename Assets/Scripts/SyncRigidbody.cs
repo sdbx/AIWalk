@@ -30,7 +30,18 @@ public class SyncRigidbody : MonoBehaviour
     private SyncMode syncMode = SyncMode.HostCalculation;
     [SerializeField]
     private float syncInterval = 0.1f;
+    [SerializeField]
+    private float interpolationDuration = 0.1f;
+    [SerializeField]
+    private float teleportDistance = 3f;
     private float timer = 0f;
+    private float interpolationTimer = 0f;
+    private bool isInterpolating = false;
+
+    private Vector3 interpolationStartPosition;
+    private Quaternion interpolationStartRotation;
+    private Vector3 interpolationStartVelocity;
+    private Vector3 interpolationStartAngularVelocity;
 
     private RigidbodyState lastReceivedState = new RigidbodyState();
     private RigidbodyState lastSentState = new RigidbodyState();
@@ -71,7 +82,6 @@ public class SyncRigidbody : MonoBehaviour
             case SyncMode.ReceiveOnly:
                 {
                     rigidbody.isKinematic = true;
-                            Debug.Log("리시브 키네틱 설정");
                     break;
                 }
             case SyncMode.HostCalculation:
@@ -109,16 +119,47 @@ public class SyncRigidbody : MonoBehaviour
         }
         if(syncMode == SyncMode.ReceiveOnly ||(!networkClient.IsHost && syncMode != SyncMode.SendOnly))
         {
-            if (lastReceivedState.updated)
+            if (!isInterpolating)
             {
                 return;
             }
-            rigidbody.MovePosition(lastReceivedState.position);
-            rigidbody.MoveRotation(lastReceivedState.rotation);
-            rigidbody.linearVelocity = lastReceivedState.velocity;
-            rigidbody.angularVelocity = lastReceivedState.angularVelocity;
 
-            lastReceivedState.updated = true;
+            if (teleportDistance > 0f &&
+                Vector3.Distance(rigidbody.position, lastReceivedState.position) > teleportDistance)
+            {
+                rigidbody.position = lastReceivedState.position;
+                rigidbody.rotation = lastReceivedState.rotation;
+                rigidbody.linearVelocity = lastReceivedState.velocity;
+                rigidbody.angularVelocity = lastReceivedState.angularVelocity;
+                isInterpolating = false;
+                return;
+            }
+
+            interpolationTimer += Time.fixedDeltaTime;
+            float duration = Mathf.Max(interpolationDuration, Time.fixedDeltaTime);
+            float t = Mathf.Clamp01(interpolationTimer / duration);
+
+            rigidbody.MovePosition(Vector3.Lerp(
+                interpolationStartPosition,
+                lastReceivedState.position,
+                t));
+            rigidbody.MoveRotation(Quaternion.Slerp(
+                interpolationStartRotation,
+                lastReceivedState.rotation,
+                t));
+            rigidbody.linearVelocity = Vector3.Lerp(
+                interpolationStartVelocity,
+                lastReceivedState.velocity,
+                t);
+            rigidbody.angularVelocity = Vector3.Lerp(
+                interpolationStartAngularVelocity,
+                lastReceivedState.angularVelocity,
+                t);
+
+            if (t >= 1f)
+            {
+                isInterpolating = false;
+            }
         }
 
     }
@@ -131,15 +172,20 @@ public class SyncRigidbody : MonoBehaviour
 
     private void ReceiveUpdate(byte[] payload)
     {
-       lastReceivedState.FromBytes(payload);
-       lastReceivedState.updated = false;
+        lastReceivedState.FromBytes(payload);
+
+        interpolationStartPosition = rigidbody.position;
+        interpolationStartRotation = rigidbody.rotation;
+        interpolationStartVelocity = rigidbody.linearVelocity;
+        interpolationStartAngularVelocity = rigidbody.angularVelocity;
+        interpolationTimer = 0f;
+        isInterpolating = true;
     }
 
 }
 
 internal class RigidbodyState
 {
-    public bool updated = true;
     public Vector3 position { get; set; }
     public Quaternion rotation { get; set; }
     public Vector3 velocity { get; set; }

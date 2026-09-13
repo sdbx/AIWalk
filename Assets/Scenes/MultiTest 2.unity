@@ -417,7 +417,9 @@ MonoBehaviour:
   networkIdentity: {fileID: 0}
   networkClient: {fileID: 0}
   syncMode: 2
-  syncInterval: 0.1
+  syncInterval: 0.001
+  interpolationDuration: 0.001
+  teleportDistance: 3
 --- !u!135 &471806439
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -1100,6 +1102,8 @@ MonoBehaviour:
   networkClient: {fileID: 0}
   syncMode: 0
   syncInterval: 0.1
+  interpolationDuration: 0.1
+  teleportDistance: 3
 --- !u!1 &718324895 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1671653014991251924, guid: 54aad85976754f641838fd12da673a15, type: 3}
@@ -2205,7 +2209,7 @@ MonoBehaviour:
   <onServerConnected>k__BackingField:
     m_PersistentCalls:
       m_Calls: []
-  backendUrl: ws://localhost:8080
+  backendUrl: ws://211.206.146.183:5353
   maxMessageBytes: 262144
 --- !u!4 &1986975654
 Transform:
