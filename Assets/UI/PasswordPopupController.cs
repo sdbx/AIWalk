@@ -12,9 +12,6 @@ public class PasswordPopupController : MonoBehaviour
   [SerializeField]
   private string answer;
 
-  [SerializeField]
-  private InputActionAsset inputActions;
-
   TextField passwordField;
   Button confirmButton;
   Button closeButton;
@@ -107,9 +104,7 @@ public class PasswordPopupController : MonoBehaviour
 
   public void Show()
   {
-    inputActions.FindActionMap("Player").Disable();
-    UnityEngine.Cursor.lockState = CursorLockMode.None;
-    UnityEngine.Cursor.visible = true;
+    CursorManager.Instance.SetUIMode();
 
     root.style.display = DisplayStyle.Flex;
 
@@ -120,8 +115,6 @@ public class PasswordPopupController : MonoBehaviour
     root.style.display = DisplayStyle.None;
     passwordField.value = "";
 
-    inputActions.FindActionMap("Player").Enable();
-    UnityEngine.Cursor.lockState = CursorLockMode.Locked;
-    UnityEngine.Cursor.visible = false;
+    CursorManager.Instance.SetFpsMode();
   }
 }
