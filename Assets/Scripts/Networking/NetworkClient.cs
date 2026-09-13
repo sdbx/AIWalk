@@ -45,6 +45,11 @@ public class NetworkClient : MonoBehaviour
         eventClient.Subscribe(eventName, callback);
     }
 
+    public void Unsubscribe(string eventName, System.Action<GameBackendEvent> callback)
+    {
+        eventClient.Unsubscribe(eventName, callback);
+    }
+
     private void Start()
     {
         StartCoroutine(ConnectToServer());
