@@ -72,8 +72,7 @@ public class PlayerController : MonoBehaviour
 
   void Start()
   {
-    Cursor.lockState = CursorLockMode.Locked;
-    Cursor.visible = false;
+    CursorManager.Instance.SetFpsMode();
   }
 
   void Update()
