@@ -10,8 +10,7 @@ public class Interactable : MonoBehaviour
   public UnityEvent OnCursorExit;
 
   [Header("Network")]
-  [SerializeField]
-  private NetworkIdentity networkIdentity;
+  public NetworkIdentity networkIdentity;
 
 
   NetworkClient networkClient;
@@ -31,21 +30,25 @@ public class Interactable : MonoBehaviour
   void OnDisable()
   {
     UnsubscribeNetworkEvent();
+    SetLayerRecursively(gameObject, "Default");
   }
 
   public void Interact()
   {
+    if (!enabled) return;
     OnInteract.Invoke();
     SendNetworkInteractEvent();
   }
 
   public void EnterCursor()
   {
+    if (!enabled) return;
     OnCursorEnter.Invoke();
     SetLayerRecursively(gameObject, "Outline");
   }
   public void ExitCursor()
   {
+    if (!enabled) return;
     OnCursorExit.Invoke();
     SetLayerRecursively(gameObject, "Default");
   }
