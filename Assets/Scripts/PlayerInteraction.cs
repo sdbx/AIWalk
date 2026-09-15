@@ -27,8 +27,9 @@ public class PlayerInteraction : MonoBehaviour
     if (Physics.Raycast(ray, out RaycastHit hit, interactDistance)
      && hit.collider.TryGetComponent<Interactable>(out var interactable))
     {
-      if (prevInteractable == null)
+      if (prevInteractable != interactable)
       {
+        prevInteractable?.ExitCursor();
         interactable.EnterCursor();
       }
       prevInteractable = interactable;

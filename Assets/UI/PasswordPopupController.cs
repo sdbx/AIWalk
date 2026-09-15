@@ -1,16 +1,11 @@
 using UnityEngine;
 using UnityEngine.Events;
-using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
 
 [RequireComponent(typeof(PanelRenderer))]
 public class PasswordPopupController : MonoBehaviour
 {
-  public UnityEvent OnPasswordConfirmed;
-  public UnityEvent OnPasswordRejected;
-
-  [SerializeField]
-  private string answer;
+  public UnityEvent<string> OnPasswordSubmit;
 
   TextField passwordField;
   Button confirmButton;
@@ -87,19 +82,13 @@ public class PasswordPopupController : MonoBehaviour
 
   void OnConfirmClicked()
   {
-    string password = passwordField.value;
+    OnPasswordSubmit.Invoke(passwordField.value.Trim());
+  }
 
-    if (password.ToLower() == answer.ToLower())
-    {
-      OnPasswordConfirmed.Invoke();
-      Hide();
-    }
-    else
-    {
-      OnPasswordRejected.Invoke();
+  public void ClearAndFocus()
+  {
       passwordField.value = "";
       passwordField.Focus();
-    }
   }
 
   public void Show()
@@ -115,6 +104,6 @@ public class PasswordPopupController : MonoBehaviour
     root.style.display = DisplayStyle.None;
     passwordField.value = "";
 
-    CursorManager.Instance.SetFpsMode();
+    CursorManager.Instance?.SetFpsMode();
   }
 }
