@@ -1122,6 +1122,13 @@ MonoBehaviour:
   microphoneDevice: 
   packetMilliseconds: 20
   microphoneGain: 3
+  voiceOpenThreshold: 0.5
+  voiceCloseThreshold: 0.35
+  voiceHangoverMilliseconds: 250
+  targetVoiceLevel: 0.16
+  maximumAutomaticGain: 4
+  echoCancellation: 1
+  echoDelayMilliseconds: 80
   playbackVolume: 1
 --- !u!82 &692066242
 AudioSource:

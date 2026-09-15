@@ -11,22 +11,39 @@ public sealed class PlayerVoiceChat : MonoBehaviour
     [SerializeField] private string microphoneDevice;
     [SerializeField] private int packetMilliseconds = 20;
     [SerializeField, Range(1f, 8f)] private float microphoneGain = 3f;
+    [SerializeField, Range(0f, 1f)] private float voiceOpenThreshold = 0.5f;
+    [SerializeField, Range(0f, 1f)] private float voiceCloseThreshold = 0.35f;
+    [SerializeField, Range(100, 500)] private int voiceHangoverMilliseconds = 250;
+    [SerializeField, Range(0.05f, 0.3f)] private float targetVoiceLevel = 0.16f;
+    [SerializeField, Range(1f, 6f)] private float maximumAutomaticGain = 4f;
+    [SerializeField] private bool echoCancellation = true;
+    [SerializeField, Range(0, 300)] private int echoDelayMilliseconds = 80;
     private const int JitterMilliseconds = 60;
+    private const int NoiseFrameMilliseconds = 10;
+    private const int MaxEchoReferenceMilliseconds = 500;
     [SerializeField, Range(0f, 2f)] private float playbackVolume = 1f;
 
     private static PlayerVoiceChat activeLocalVoice;
 
     private readonly object playbackLock = new();
     private readonly Dictionary<ushort, VoicePlaybackBuffer> playbackBuffers = new();
+    private readonly Queue<float> echoReferenceSamples = new();
 
     private AudioSource voiceOutput;
     private AudioClip microphoneClip;
     private AudioClip playbackClip;
     private RnNoiseProcessor noiseProcessor;
+    private WebRtcAecProcessor echoCanceller;
     private float[] microphoneFrame;
+    private float[] echoReferenceFrame;
+    private float[] echoCancelledFrame;
     private float[] cleanFrame;
     private float[] networkPacket;
     private int networkPacketPosition;
+    private int voiceHangoverFrames;
+    private float voiceGateGain;
+    private float automaticGain = 1f;
+    private float lastPlaybackSample;
     private int microphonePosition = -1;
     private int samplesPerPacket;
 
@@ -42,6 +59,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
 
         activeLocalVoice = this;
         packetMilliseconds = Mathf.Max(10, packetMilliseconds);
+        voiceCloseThreshold = Mathf.Min(voiceCloseThreshold, voiceOpenThreshold);
         voiceOutput = GetComponent<AudioSource>();
         voiceOutput.playOnAwake = false;
         voiceOutput.loop = true;
@@ -49,6 +67,8 @@ public sealed class PlayerVoiceChat : MonoBehaviour
 
         samplesPerPacket = Mathf.Max(1, RnNoiseProcessor.OutputSampleRate * packetMilliseconds / 1000);
         microphoneFrame = new float[RnNoiseProcessor.InputFrameSamples];
+        echoReferenceFrame = new float[WebRtcAecProcessor.FrameSamples];
+        echoCancelledFrame = new float[WebRtcAecProcessor.FrameSamples];
         cleanFrame = new float[RnNoiseProcessor.OutputFrameSamples];
         networkPacket = new float[samplesPerPacket];
     }
@@ -70,6 +90,8 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         try
         {
             noiseProcessor = new RnNoiseProcessor();
+            if (echoCancellation)
+                echoCanceller = new WebRtcAecProcessor(echoDelayMilliseconds);
         }
         catch (Exception exception)
         {
@@ -134,7 +156,16 @@ public sealed class PlayerVoiceChat : MonoBehaviour
 
     private void ProcessMicrophoneFrame()
     {
-        noiseProcessor.Process(microphoneFrame, cleanFrame);
+        float[] noiseInput = microphoneFrame;
+        if (echoCanceller != null)
+        {
+            ReadEchoReferenceFrame();
+            echoCanceller.Process(echoReferenceFrame, microphoneFrame, echoCancelledFrame);
+            noiseInput = echoCancelledFrame;
+        }
+
+        float voiceProbability = noiseProcessor.Process(noiseInput, cleanFrame);
+        ApplyVoiceGateAndAutomaticGain(voiceProbability);
 
         int sourcePosition = 0;
         while (sourcePosition < cleanFrame.Length)
@@ -152,13 +183,69 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         }
     }
 
+    private void ApplyVoiceGateAndAutomaticGain(float voiceProbability)
+    {
+        int hangoverLength = Mathf.Max(1, voiceHangoverMilliseconds / NoiseFrameMilliseconds);
+        if (voiceProbability >= voiceOpenThreshold)
+        {
+            voiceHangoverFrames = hangoverLength;
+        }
+        else if (voiceProbability >= voiceCloseThreshold && voiceHangoverFrames > 0)
+        {
+            voiceHangoverFrames = hangoverLength;
+        }
+        else if (voiceHangoverFrames > 0)
+        {
+            voiceHangoverFrames--;
+        }
+
+        bool voiceActive = voiceHangoverFrames > 0;
+        float gateTarget = voiceActive ? 1f : 0f;
+        float gateSpeed = voiceActive ? 1f : 0.2f;
+        voiceGateGain = Mathf.MoveTowards(voiceGateGain, gateTarget, gateSpeed);
+
+        if (voiceActive)
+        {
+            double squareSum = 0;
+            for (int i = 0; i < cleanFrame.Length; i++)
+                squareSum += cleanFrame[i] * cleanFrame[i];
+
+            float rms = Mathf.Sqrt((float)(squareSum / cleanFrame.Length));
+            if (rms > 0.0001f)
+            {
+                float desiredGain = targetVoiceLevel / (rms * microphoneGain);
+                desiredGain = Mathf.Clamp(desiredGain, 0.1f, maximumAutomaticGain);
+
+                // Reduce gain quickly on loud input, raise it slowly to avoid pumping noise.
+                float smoothing = desiredGain < automaticGain ? 0.35f : 0.08f;
+                automaticGain = Mathf.Lerp(automaticGain, desiredGain, smoothing);
+            }
+        }
+
+        for (int i = 0; i < cleanFrame.Length; i++)
+        {
+            float amplified = cleanFrame[i] * microphoneGain * automaticGain * voiceGateGain;
+            cleanFrame[i] = SoftLimit(amplified);
+        }
+    }
+
+    private static float SoftLimit(float sample)
+    {
+        const float threshold = 0.9f;
+        float magnitude = Mathf.Abs(sample);
+        if (magnitude <= threshold)
+            return sample;
+
+        float limited = threshold + (1f - Mathf.Exp(-(magnitude - threshold) * 10f)) * (1f - threshold);
+        return Mathf.Sign(sample) * Mathf.Min(limited, 0.999f);
+    }
+
     private void SendVoice(float[] samples)
     {
         var pcm16 = new byte[samples.Length * 2];
         for (int i = 0; i < samples.Length; i++)
         {
-            float amplified = Mathf.Clamp(samples[i] * microphoneGain, -1f, 1f);
-            short pcm = (short)Mathf.RoundToInt(amplified * short.MaxValue);
+            short pcm = (short)Mathf.RoundToInt(Mathf.Clamp(samples[i], -1f, 1f) * short.MaxValue);
             BinaryPrimitives.WriteInt16LittleEndian(pcm16.AsSpan(i * 2, 2), pcm);
         }
 
@@ -217,6 +304,38 @@ public sealed class PlayerVoiceChat : MonoBehaviour
 
         for (int i = 0; i < output.Length; i++)
             output[i] = Mathf.Clamp(output[i], -1f, 1f);
+
+        lock (playbackLock)
+            QueueEchoReference(output);
+    }
+
+    private void QueueEchoReference(float[] playback)
+    {
+        int maximumSamples = WebRtcAecProcessor.SampleRate * MaxEchoReferenceMilliseconds / 1000;
+        for (int i = 0; i < playback.Length; i++)
+        {
+            float current = playback[i];
+            echoReferenceSamples.Enqueue(Mathf.Lerp(lastPlaybackSample, current, 1f / 3f));
+            echoReferenceSamples.Enqueue(Mathf.Lerp(lastPlaybackSample, current, 2f / 3f));
+            echoReferenceSamples.Enqueue(current);
+            lastPlaybackSample = current;
+        }
+
+        while (echoReferenceSamples.Count > maximumSamples)
+            echoReferenceSamples.Dequeue();
+    }
+
+    private void ReadEchoReferenceFrame()
+    {
+        lock (playbackLock)
+        {
+            for (int i = 0; i < echoReferenceFrame.Length; i++)
+            {
+                echoReferenceFrame[i] = echoReferenceSamples.Count > 0
+                    ? echoReferenceSamples.Dequeue()
+                    : 0f;
+            }
+        }
     }
 
     private void OnDestroy()
@@ -230,6 +349,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         if (Microphone.IsRecording(device))
             Microphone.End(device);
         noiseProcessor?.Dispose();
+        echoCanceller?.Dispose();
     }
 
     private sealed class VoicePlaybackBuffer
