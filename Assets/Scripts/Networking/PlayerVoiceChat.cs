@@ -17,6 +17,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
     [SerializeField, Range(0.05f, 0.3f)] private float targetVoiceLevel = 0.16f;
     [SerializeField, Range(1f, 6f)] private float maximumAutomaticGain = 4f;
     [SerializeField] private bool echoCancellation = true;
+    [SerializeField] private bool automaticEchoDelay = true;
     [SerializeField, Range(0, 300)] private int echoDelayMilliseconds = 80;
     private const int JitterMilliseconds = 60;
     private const int NoiseFrameMilliseconds = 10;
@@ -46,6 +47,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
     private float lastPlaybackSample;
     private int microphonePosition = -1;
     private int samplesPerPacket;
+    private bool appliedEchoCancellation;
 
     private void Awake()
     {
@@ -90,8 +92,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         try
         {
             noiseProcessor = new RnNoiseProcessor();
-            if (echoCancellation)
-                echoCanceller = new WebRtcAecProcessor(echoDelayMilliseconds);
+            ApplyEchoCancellationSetting();
         }
         catch (Exception exception)
         {
@@ -110,7 +111,37 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         if (!enabled)
             return;
 
+        if (appliedEchoCancellation != echoCancellation)
+            ApplyEchoCancellationSetting();
         CaptureMicrophone();
+    }
+
+    public void SetEchoCancellation(bool enabled)
+    {
+        echoCancellation = enabled;
+        if (noiseProcessor != null && appliedEchoCancellation != echoCancellation)
+            ApplyEchoCancellationSetting();
+    }
+
+    private void ApplyEchoCancellationSetting()
+    {
+        echoCanceller?.Dispose();
+        echoCanceller = null;
+
+        lock (playbackLock)
+        {
+            echoReferenceSamples.Clear();
+            lastPlaybackSample = 0f;
+        }
+
+        if (echoCancellation)
+        {
+            echoCanceller = new WebRtcAecProcessor(
+                automaticEchoDelay ? null : echoDelayMilliseconds);
+        }
+
+        appliedEchoCancellation = echoCancellation;
+        Debug.Log($"Echo cancellation {(echoCancellation ? "enabled" : "disabled")}.", this);
     }
 
     private void StartMicrophone()
@@ -305,8 +336,11 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         for (int i = 0; i < output.Length; i++)
             output[i] = Mathf.Clamp(output[i], -1f, 1f);
 
-        lock (playbackLock)
-            QueueEchoReference(output);
+        if (echoCancellation)
+        {
+            lock (playbackLock)
+                QueueEchoReference(output);
+        }
     }
 
     private void QueueEchoReference(float[] playback)

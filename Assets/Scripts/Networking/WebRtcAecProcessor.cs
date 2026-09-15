@@ -8,13 +8,16 @@ internal sealed class WebRtcAecProcessor : IDisposable
 
     private IntPtr state;
 
-    public WebRtcAecProcessor(int streamDelayMilliseconds)
+    public WebRtcAecProcessor(int? streamDelayMilliseconds = null)
     {
         state = NativeMethods.unity_aec3_create();
         if (state == IntPtr.Zero)
             throw new InvalidOperationException("WebRTC AEC3 state could not be created.");
 
-        NativeMethods.unity_aec3_set_delay_ms(state, Math.Max(0, streamDelayMilliseconds));
+        // Without an external delay AEC3 continuously estimates the render-to-capture
+        // delay itself. A fixed value is kept only as a fallback for unusual devices.
+        if (streamDelayMilliseconds.HasValue)
+            NativeMethods.unity_aec3_set_delay_ms(state, Math.Max(0, streamDelayMilliseconds.Value));
     }
 
     public void Process(float[] render, float[] capture, float[] output)

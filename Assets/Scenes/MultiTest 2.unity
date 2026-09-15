@@ -1128,6 +1128,7 @@ MonoBehaviour:
   targetVoiceLevel: 0.16
   maximumAutomaticGain: 4
   echoCancellation: 1
+  automaticEchoDelay: 1
   echoDelayMilliseconds: 80
   playbackVolume: 1
 --- !u!82 &692066242
