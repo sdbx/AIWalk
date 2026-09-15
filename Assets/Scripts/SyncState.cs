@@ -1,5 +1,7 @@
 using UnityEngine;
 
+
+[RequireComponent(typeof(NetworkIdentity))]
 public class SyncState : MonoBehaviour
 {
     [Header("Network")]

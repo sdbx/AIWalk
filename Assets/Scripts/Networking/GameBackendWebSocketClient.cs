@@ -21,6 +21,7 @@ namespace AIWalk.Networking
         private const byte RealtimeProtocolVersion = 1;
         private const byte PlayerInputKind = 1;
         private const byte PhysicsSnapshotKind = 2;
+        private const byte VoicePcmKind = 3;
         private const int RealtimeHeaderBytes = 16;
         public const int PhysicsObjectIdBytes = 32;
         private readonly object stateLock = new();
@@ -58,6 +59,7 @@ namespace AIWalk.Networking
         public event Action Connected;
         public event Action<string> TextMessageReceived;
         public event Action<byte[]> BinaryMessageReceived;
+        public event Action<ushort, byte[]> VoicePcmReceived;
         public event Action<WebSocketCloseStatus?, string> Disconnected;
         public event Action<Exception> TransportError;
 
@@ -248,6 +250,24 @@ namespace AIWalk.Networking
                 snapshotPayload,
                 sequence,
                 importantSend,
+                cancellationToken);
+        }
+
+        public Task SendVoicePcmAsync(
+            byte[] pcm16,
+            uint sequence,
+            CancellationToken cancellationToken = default)
+        {
+            if (pcm16 == null)
+                throw new ArgumentNullException(nameof(pcm16));
+            if (pcm16.Length == 0 || pcm16.Length % 2 != 0)
+                throw new ArgumentException("Voice payload must contain PCM16 samples.", nameof(pcm16));
+
+            return SendRealtimeAsync(
+                VoicePcmKind,
+                pcm16,
+                sequence,
+                false,
                 cancellationToken);
         }
 
@@ -542,6 +562,22 @@ namespace AIWalk.Networking
         private void DispatchBinary(byte[] frame)
         {
             InvokeSafely(BinaryMessageReceived, frame);
+
+            if (frame.Length < RealtimeHeaderBytes)
+                return;
+
+            if (frame[1] == VoicePcmKind)
+            {
+                ushort peerSlot = BinaryPrimitives.ReadUInt16LittleEndian(frame.AsSpan(2, 2));
+                int payloadLength = frame.Length - RealtimeHeaderBytes;
+                if (payloadLength <= 0 || payloadLength % 2 != 0)
+                    return;
+
+                var pcm16 = new byte[payloadLength];
+                Buffer.BlockCopy(frame, RealtimeHeaderBytes, pcm16, 0, payloadLength);
+                InvokeSafely(VoicePcmReceived, peerSlot, pcm16);
+                return;
+            }
 
             if (frame.Length < RealtimeHeaderBytes + PhysicsObjectIdBytes || frame[1] != PhysicsSnapshotKind)
                 return;

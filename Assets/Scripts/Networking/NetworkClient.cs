@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using AIWalk.Networking;
 using UnityEngine;
 using UnityEngine.Events;
@@ -17,6 +19,12 @@ public class NetworkClient : MonoBehaviour
 
     private GameBackendWebSocketClient socketClient;
     private GameBackendEventClient eventClient;
+    private const int MaxQueuedVoicePackets = 5;
+    private readonly object voiceSendLock = new();
+    private readonly Queue<byte[]> voiceSendQueue = new();
+    private uint voiceSequence;
+    private bool voiceSendLoopRunning;
+    private Exception voiceSendError;
     [field:SerializeField]
     public UnityEvent onServerConnected{get;private set;} = new UnityEvent();
 
@@ -108,6 +116,70 @@ public class NetworkClient : MonoBehaviour
     {
         socketClient.SubscribePhysicsSnapshot(id,callback);
     }
+
+    public void SendVoicePcm(byte[] pcm16)
+    {
+        if (!socketClient.IsConnected)
+        {
+            Debug.LogWarning("Cannot send voice. Not connected to server.");
+            return;
+        }
+
+        lock (voiceSendLock)
+        {
+            // Keep latency bounded. If the network falls behind, discard the oldest
+            // unsent audio instead of allowing stale speech to accumulate.
+            if (voiceSendQueue.Count >= MaxQueuedVoicePackets)
+                voiceSendQueue.Dequeue();
+            voiceSendQueue.Enqueue(pcm16);
+
+            if (voiceSendLoopRunning)
+                return;
+            voiceSendLoopRunning = true;
+        }
+
+        _ = SendQueuedVoiceAsync();
+    }
+
+    private async Task SendQueuedVoiceAsync()
+    {
+        while (true)
+        {
+            byte[] pcm16;
+            lock (voiceSendLock)
+            {
+                if (voiceSendQueue.Count == 0)
+                {
+                    voiceSendLoopRunning = false;
+                    return;
+                }
+                pcm16 = voiceSendQueue.Dequeue();
+            }
+
+            try
+            {
+                await socketClient.SendVoicePcmAsync(pcm16, voiceSequence++);
+            }
+            catch (Exception exception)
+            {
+                lock (voiceSendLock)
+                {
+                    voiceSendQueue.Clear();
+                    voiceSendError = exception;
+                }
+            }
+        }
+    }
+
+    public void SubscribeVoice(Action<ushort, byte[]> callback)
+    {
+        socketClient.VoicePcmReceived += callback;
+    }
+
+    public void UnsubscribeVoice(Action<ushort, byte[]> callback)
+    {
+        socketClient.VoicePcmReceived -= callback;
+    }
     public void SubscribeUnityEvent(string eventName, UnityEvent unityEvent)
     {
         eventClient.Subscribe(eventName, (e)=>{unityEvent.Invoke();});
@@ -145,6 +217,18 @@ public class NetworkClient : MonoBehaviour
 
     private void Update()
     {
+        Exception sendError = null;
+        lock (voiceSendLock)
+        {
+            if (voiceSendError != null)
+            {
+                sendError = voiceSendError;
+                voiceSendError = null;
+            }
+        }
+        if (sendError != null)
+            Debug.LogException(sendError);
+
         if(socketClient.IsConnected)
         {
             UpdateServers();
