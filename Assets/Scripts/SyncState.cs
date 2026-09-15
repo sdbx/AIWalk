@@ -11,14 +11,5 @@ public class SyncState : MonoBehaviour
     [SerializeField]
     private NetworkClient networkClient;
 
-    void Start()
-    {
-        
-    }
-
-
-    void Update()
-    {
-        
-    }
+    
 }

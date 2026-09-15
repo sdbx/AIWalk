@@ -9,8 +9,8 @@ public sealed class PlayerVoiceChat : MonoBehaviour
 {
     [SerializeField] private NetworkClient networkClient;
     [SerializeField] private string microphoneDevice;
-    [SerializeField] private int sampleRate = 16000;
     [SerializeField] private int packetMilliseconds = 20;
+    [SerializeField, Range(1f, 8f)] private float microphoneGain = 3f;
     private const int JitterMilliseconds = 60;
     [SerializeField, Range(0f, 2f)] private float playbackVolume = 1f;
 
@@ -22,6 +22,11 @@ public sealed class PlayerVoiceChat : MonoBehaviour
     private AudioSource voiceOutput;
     private AudioClip microphoneClip;
     private AudioClip playbackClip;
+    private RnNoiseProcessor noiseProcessor;
+    private float[] microphoneFrame;
+    private float[] cleanFrame;
+    private float[] networkPacket;
+    private int networkPacketPosition;
     private int microphonePosition = -1;
     private int samplesPerPacket;
 
@@ -36,14 +41,16 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         }
 
         activeLocalVoice = this;
-        sampleRate = Mathf.Max(8000, sampleRate);
         packetMilliseconds = Mathf.Max(10, packetMilliseconds);
         voiceOutput = GetComponent<AudioSource>();
         voiceOutput.playOnAwake = false;
         voiceOutput.loop = true;
         voiceOutput.spatialBlend = 0f;
 
-        samplesPerPacket = Mathf.Max(1, sampleRate * packetMilliseconds / 1000);
+        samplesPerPacket = Mathf.Max(1, RnNoiseProcessor.OutputSampleRate * packetMilliseconds / 1000);
+        microphoneFrame = new float[RnNoiseProcessor.InputFrameSamples];
+        cleanFrame = new float[RnNoiseProcessor.OutputFrameSamples];
+        networkPacket = new float[samplesPerPacket];
     }
 
     private void Start()
@@ -59,6 +66,17 @@ public sealed class PlayerVoiceChat : MonoBehaviour
     private IEnumerator StartWhenGameReady()
     {
         yield return new WaitUntil(() => networkClient != null && networkClient.IsConnected);
+
+        try
+        {
+            noiseProcessor = new RnNoiseProcessor();
+        }
+        catch (Exception exception)
+        {
+            Debug.LogException(exception, this);
+            enabled = false;
+            yield break;
+        }
 
         StartMicrophone();
         StartPlayback();
@@ -76,7 +94,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
     private void StartMicrophone()
     {
         string device = string.IsNullOrWhiteSpace(microphoneDevice) ? null : microphoneDevice;
-        microphoneClip = Microphone.Start(device, true, 2, sampleRate);
+        microphoneClip = Microphone.Start(device, true, 2, RnNoiseProcessor.InputSampleRate);
         if (microphoneClip == null)
         {
             Debug.LogError("Could not start the microphone.", this);
@@ -105,13 +123,32 @@ public sealed class PlayerVoiceChat : MonoBehaviour
             ? currentPosition - microphonePosition
             : microphoneClip.samples - microphonePosition + currentPosition;
 
-        while (available >= samplesPerPacket)
+        while (available >= RnNoiseProcessor.InputFrameSamples)
         {
-            var samples = new float[samplesPerPacket];
-            microphoneClip.GetData(samples, microphonePosition);
-            microphonePosition = (microphonePosition + samplesPerPacket) % microphoneClip.samples;
-            available -= samplesPerPacket;
-            SendVoice(samples);
+            microphoneClip.GetData(microphoneFrame, microphonePosition);
+            microphonePosition = (microphonePosition + RnNoiseProcessor.InputFrameSamples) % microphoneClip.samples;
+            available -= RnNoiseProcessor.InputFrameSamples;
+            ProcessMicrophoneFrame();
+        }
+    }
+
+    private void ProcessMicrophoneFrame()
+    {
+        noiseProcessor.Process(microphoneFrame, cleanFrame);
+
+        int sourcePosition = 0;
+        while (sourcePosition < cleanFrame.Length)
+        {
+            int copyLength = Mathf.Min(cleanFrame.Length - sourcePosition, networkPacket.Length - networkPacketPosition);
+            Array.Copy(cleanFrame, sourcePosition, networkPacket, networkPacketPosition, copyLength);
+            sourcePosition += copyLength;
+            networkPacketPosition += copyLength;
+
+            if (networkPacketPosition != networkPacket.Length)
+                continue;
+
+            SendVoice(networkPacket);
+            networkPacketPosition = 0;
         }
     }
 
@@ -120,7 +157,8 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         var pcm16 = new byte[samples.Length * 2];
         for (int i = 0; i < samples.Length; i++)
         {
-            short pcm = (short)Mathf.RoundToInt(Mathf.Clamp(samples[i], -1f, 1f) * short.MaxValue);
+            float amplified = Mathf.Clamp(samples[i] * microphoneGain, -1f, 1f);
+            short pcm = (short)Mathf.RoundToInt(amplified * short.MaxValue);
             BinaryPrimitives.WriteInt16LittleEndian(pcm16.AsSpan(i * 2, 2), pcm);
         }
 
@@ -146,7 +184,9 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         {
             if (!playbackBuffers.TryGetValue(senderSlot, out VoicePlaybackBuffer buffer))
             {
-                buffer = new VoicePlaybackBuffer(sampleRate * 2, sampleRate * JitterMilliseconds / 1000);
+                buffer = new VoicePlaybackBuffer(
+                    RnNoiseProcessor.OutputSampleRate * 2,
+                    RnNoiseProcessor.OutputSampleRate * JitterMilliseconds / 1000);
                 playbackBuffers.Add(senderSlot, buffer);
             }
             buffer.Write(samples);
@@ -157,9 +197,9 @@ public sealed class PlayerVoiceChat : MonoBehaviour
     {
         playbackClip = AudioClip.Create(
             "Network Voice",
-            sampleRate,
+            RnNoiseProcessor.OutputSampleRate,
             1,
-            sampleRate,
+            RnNoiseProcessor.OutputSampleRate,
             true,
             FillPlaybackBuffer);
         voiceOutput.clip = playbackClip;
@@ -189,6 +229,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         string device = string.IsNullOrWhiteSpace(microphoneDevice) ? null : microphoneDevice;
         if (Microphone.IsRecording(device))
             Microphone.End(device);
+        noiseProcessor?.Dispose();
     }
 
     private sealed class VoicePlaybackBuffer
