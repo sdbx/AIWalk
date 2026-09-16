@@ -17,6 +17,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
     [SerializeField, Range(0.05f, 0.3f)] private float targetVoiceLevel = 0.16f;
     [SerializeField, Range(1f, 6f)] private float maximumAutomaticGain = 4f;
     [SerializeField] private bool echoCancellation = true;
+    [SerializeField] private bool useSystemOutputEchoReference = true;
     [SerializeField] private bool automaticEchoDelay = true;
     [SerializeField, Range(0, 300)] private int echoDelayMilliseconds = 80;
     private const int JitterMilliseconds = 60;
@@ -35,6 +36,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
     private AudioClip playbackClip;
     private RnNoiseProcessor noiseProcessor;
     private WebRtcAecProcessor echoCanceller;
+    private WasapiLoopbackCapture systemOutputCapture;
     private float[] microphoneFrame;
     private float[] echoReferenceFrame;
     private float[] echoCancelledFrame;
@@ -125,6 +127,8 @@ public sealed class PlayerVoiceChat : MonoBehaviour
 
     private void ApplyEchoCancellationSetting()
     {
+        systemOutputCapture?.Dispose();
+        systemOutputCapture = null;
         echoCanceller?.Dispose();
         echoCanceller = null;
 
@@ -138,6 +142,24 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         {
             echoCanceller = new WebRtcAecProcessor(
                 automaticEchoDelay ? null : echoDelayMilliseconds);
+
+            if (useSystemOutputEchoReference &&
+                (Application.platform == RuntimePlatform.WindowsEditor ||
+                 Application.platform == RuntimePlatform.WindowsPlayer))
+            {
+                try
+                {
+                    systemOutputCapture = new WasapiLoopbackCapture();
+                    Debug.Log("AEC is using the Windows system output reference.", this);
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning(
+                        $"System output capture is unavailable. " +
+                        $"AEC will use the Unity voice reference instead. {exception.Message}",
+                        this);
+                }
+            }
         }
 
         appliedEchoCancellation = echoCancellation;
@@ -190,7 +212,10 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         float[] noiseInput = microphoneFrame;
         if (echoCanceller != null)
         {
-            ReadEchoReferenceFrame();
+            if (systemOutputCapture != null)
+                systemOutputCapture.ReadFrame(echoReferenceFrame);
+            else
+                ReadEchoReferenceFrame();
             echoCanceller.Process(echoReferenceFrame, microphoneFrame, echoCancelledFrame);
             noiseInput = echoCancelledFrame;
         }
@@ -336,7 +361,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         for (int i = 0; i < output.Length; i++)
             output[i] = Mathf.Clamp(output[i], -1f, 1f);
 
-        if (echoCancellation)
+        if (echoCancellation && systemOutputCapture == null)
         {
             lock (playbackLock)
                 QueueEchoReference(output);
@@ -383,6 +408,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         if (Microphone.IsRecording(device))
             Microphone.End(device);
         noiseProcessor?.Dispose();
+        systemOutputCapture?.Dispose();
         echoCanceller?.Dispose();
     }
 
