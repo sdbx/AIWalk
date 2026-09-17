@@ -19,7 +19,6 @@ public class NetworkClient : MonoBehaviour
 
     private GameBackendWebSocketClient socketClient;
     private GameBackendEventClient eventClient;
-    private const int MaxQueuedVoicePackets = 5;
     private readonly object voiceSendLock = new();
     private readonly Queue<byte[]> voiceSendQueue = new();
     private uint voiceSequence;
@@ -127,10 +126,6 @@ public class NetworkClient : MonoBehaviour
 
         lock (voiceSendLock)
         {
-            // Keep latency bounded. If the network falls behind, discard the oldest
-            // unsent audio instead of allowing stale speech to accumulate.
-            if (voiceSendQueue.Count >= MaxQueuedVoicePackets)
-                voiceSendQueue.Dequeue();
             voiceSendQueue.Enqueue(pcm16);
 
             if (voiceSendLoopRunning)
@@ -173,12 +168,12 @@ public class NetworkClient : MonoBehaviour
 
     public void SubscribeVoice(Action<ushort, byte[]> callback)
     {
-        socketClient.VoicePcmReceived += callback;
+        socketClient.RealtimeVoicePcmReceived += callback;
     }
 
     public void UnsubscribeVoice(Action<ushort, byte[]> callback)
     {
-        socketClient.VoicePcmReceived -= callback;
+        socketClient.RealtimeVoicePcmReceived -= callback;
     }
     public void SubscribeUnityEvent(string eventName, UnityEvent unityEvent)
     {

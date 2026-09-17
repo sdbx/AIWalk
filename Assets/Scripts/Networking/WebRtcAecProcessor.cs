@@ -8,9 +8,20 @@ internal sealed class WebRtcAecProcessor : IDisposable
 
     private IntPtr state;
 
-    public WebRtcAecProcessor(int? streamDelayMilliseconds = null)
+    public WebRtcAecProcessor(
+        int? streamDelayMilliseconds,
+        float nearEndThreshold,
+        float nearEndSnrThreshold,
+        int nearEndTriggerMilliseconds,
+        int nearEndHoldMilliseconds,
+        float nearEndExitThreshold)
     {
-        state = NativeMethods.unity_aec3_create();
+        state = NativeMethods.unity_aec3_create_configured(
+            nearEndThreshold,
+            nearEndSnrThreshold,
+            nearEndTriggerMilliseconds,
+            nearEndHoldMilliseconds,
+            nearEndExitThreshold);
         if (state == IntPtr.Zero)
             throw new InvalidOperationException("WebRTC AEC3 state could not be created.");
 
@@ -50,20 +61,28 @@ internal sealed class WebRtcAecProcessor : IDisposable
 
     private static class NativeMethods
     {
-        [DllImport("webrtc_aec3", CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("webrtc_aec3_upstream", CallingConvention = CallingConvention.Cdecl)]
         public static extern IntPtr unity_aec3_create();
 
-        [DllImport("webrtc_aec3", CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("webrtc_aec3_upstream", CallingConvention = CallingConvention.Cdecl)]
+        public static extern IntPtr unity_aec3_create_configured(
+            float nearEndThreshold,
+            float nearEndSnrThreshold,
+            int nearEndTriggerMilliseconds,
+            int nearEndHoldMilliseconds,
+            float nearEndExitThreshold);
+
+        [DllImport("webrtc_aec3_upstream", CallingConvention = CallingConvention.Cdecl)]
         public static extern void unity_aec3_destroy(IntPtr state);
 
-        [DllImport("webrtc_aec3", CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("webrtc_aec3_upstream", CallingConvention = CallingConvention.Cdecl)]
         public static extern int unity_aec3_process(
             IntPtr state,
             [In] float[] render,
             [In] float[] capture,
             [Out] float[] output);
 
-        [DllImport("webrtc_aec3", CallingConvention = CallingConvention.Cdecl)]
+        [DllImport("webrtc_aec3_upstream", CallingConvention = CallingConvention.Cdecl)]
         public static extern void unity_aec3_set_delay_ms(IntPtr state, int delayMilliseconds);
     }
 }

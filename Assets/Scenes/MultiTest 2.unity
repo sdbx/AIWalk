@@ -813,6 +813,7 @@ GameObject:
   - component: {fileID: 692066238}
   - component: {fileID: 692066242}
   - component: {fileID: 692066241}
+  - component: {fileID: 692066243}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -1121,16 +1122,29 @@ MonoBehaviour:
   networkClient: {fileID: 0}
   microphoneDevice: 
   packetMilliseconds: 20
+  jitterMilliseconds: 50
   microphoneGain: 3
   voiceOpenThreshold: 0.5
   voiceCloseThreshold: 0.35
   voiceHangoverMilliseconds: 250
+  useVoiceGate: 0
+  protectDoubleTalk: 1
+  doubleTalkOpenThreshold: 0.4
+  doubleTalkCloseThreshold: 0.28
+  doubleTalkHangoverMilliseconds: 350
+  farEndActivityThreshold: 0.003
   targetVoiceLevel: 0.16
   maximumAutomaticGain: 4
   echoCancellation: 1
   useSystemOutputEchoReference: 1
   automaticEchoDelay: 1
   echoDelayMilliseconds: 80
+  echoDoubleTalkPreset: 0
+  customNearEndThreshold: 0.25
+  customNearEndSnrThreshold: 30
+  customNearEndTriggerMilliseconds: 48
+  customNearEndHoldMilliseconds: 200
+  customNearEndExitThreshold: 10
   playbackVolume: 1
 --- !u!82 &692066242
 AudioSource:
@@ -1229,6 +1243,22 @@ AudioSource:
     m_PreInfinity: 2
     m_PostInfinity: 2
     m_RotationOrder: 4
+--- !u!114 &692066243
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 692066232}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cbaa5c1d124447f78e90d8fce096a665, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VoiceEchoReferenceDebugView
+  voiceChat: {fileID: 692066241}
+  visibleSeconds: 1
+  toggleKey: 101
+  visible: 1
 --- !u!1 &718324895 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 1671653014991251924, guid: 54aad85976754f641838fd12da673a15, type: 3}

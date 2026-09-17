@@ -60,6 +60,11 @@ namespace AIWalk.Networking
         public event Action<string> TextMessageReceived;
         public event Action<byte[]> BinaryMessageReceived;
         public event Action<ushort, byte[]> VoicePcmReceived;
+        /// <summary>
+        /// Raised directly from the WebSocket receive thread for low-latency voice playback.
+        /// Handlers must only copy/process plain data and must not access Unity objects.
+        /// </summary>
+        public event Action<ushort, byte[]> RealtimeVoicePcmReceived;
         public event Action<WebSocketCloseStatus?, string> Disconnected;
         public event Action<Exception> TransportError;
 
@@ -503,6 +508,10 @@ namespace AIWalk.Networking
                             Buffer.BlockCopy(payload, 1, binary, 0, binary.Length);
                             payload = binary;
                         }
+
+                        if (TryDispatchRealtimeVoice(payload))
+                            continue;
+
                         receivedEvents.Enqueue(QueuedEvent.ForBinary(payload, important));
                     }
                 }
@@ -602,6 +611,28 @@ namespace AIWalk.Networking
             Buffer.BlockCopy(frame, payloadOffset, payload, 0, payload.Length);
             foreach (var handler in handlers)
                 InvokeSafely(handler, payload);
+        }
+
+        private bool TryDispatchRealtimeVoice(byte[] frame)
+        {
+            var callback = RealtimeVoicePcmReceived;
+            if (callback == null ||
+                frame.Length < RealtimeHeaderBytes ||
+                frame[0] != RealtimeProtocolVersion ||
+                frame[1] != VoicePcmKind)
+            {
+                return false;
+            }
+
+            int payloadLength = frame.Length - RealtimeHeaderBytes;
+            if (payloadLength <= 0 || payloadLength % 2 != 0)
+                return true;
+
+            ushort peerSlot = BinaryPrimitives.ReadUInt16LittleEndian(frame.AsSpan(2, 2));
+            var pcm16 = new byte[payloadLength];
+            Buffer.BlockCopy(frame, RealtimeHeaderBytes, pcm16, 0, payloadLength);
+            InvokeSafely(callback, peerSlot, pcm16);
+            return true;
         }
 
         private static void ValidatePhysicsObjectId(string objectId)
