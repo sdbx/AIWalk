@@ -12,8 +12,7 @@ public class NetworkObjectManager : MonoBehaviour
     [SerializeField]
     private NetworkClient networkClient;
     [SerializeField]
-    private Dictionary<string,PlayerFactory> factorys = new Dictionary<string, PlayerFactory>();
-    //Dictionary<string,INetworkObjectFactory> serialize안되서 임시로 PlayerFactory로 적용
+    private Dictionary<string,InterfaceBehavior<INetworkObjectFactory>> factorys = new Dictionary<string, InterfaceBehavior<INetworkObjectFactory>>();
 
     void Start()
     {
@@ -25,7 +24,7 @@ public class NetworkObjectManager : MonoBehaviour
     {
         Debug.Log("creation received");
         var data = e.DeserializePayload<NetworkObjectData>();
-        factorys[data.objectType].Create(data);
+        factorys[data.objectType].Value.Create(data);
     }
 
     public void sendCreateObjectEvent(NetworkObjectData data)
