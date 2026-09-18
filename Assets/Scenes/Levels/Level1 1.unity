@@ -1952,6 +1952,14 @@ PrefabInstance:
       propertyPath: m_Name
       value: Player
       objectReference: {fileID: 0}
+    - target: {fileID: 5445550215602985231, guid: a84b2602a4c66c84f97df03b0b2045af, type: 3}
+      propertyPath: m_LinearDamping
+      value: 0.01
+      objectReference: {fileID: 0}
+    - target: {fileID: 8397461383601469502, guid: a84b2602a4c66c84f97df03b0b2045af, type: 3}
+      propertyPath: m_Material
+      value: 
+      objectReference: {fileID: 13400000, guid: 4c573a885532b3a418c5bc9bf82b3037, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects:
