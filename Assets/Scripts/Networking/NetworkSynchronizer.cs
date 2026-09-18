@@ -6,39 +6,25 @@ using AIWalk.Networking;
 using UnityEngine;
 
 [RequireComponent(typeof(NetworkIdentity))]
-public class NetworkSynchronizer : MonoBehaviour
+public class NetworkSynchronizer : NetBehaviour
 {
   [SerializeField]
   private List<VariableReference> variables = new();
 
-  NetworkClient networkClient;
-  NetworkIdentity networkIdentity;
-  bool host;
-
-  void Start()
+  protected override void OnNetworkReady()
   {
-    NetworkClient.GetInstance(ref networkClient);
-    networkClient.onServerConnected.AddListener(OnNetworkReady);
-
-    networkIdentity = GetComponent<NetworkIdentity>();
-  }
-
-  void OnNetworkReady()
-  {
-    host = networkClient.IsHost;
-
-    if (host)
+    if (IsHost)
     {
-      networkClient.Subscribe("peer.joined", data =>
+      SubscribeGlobalEvent("peer.joined", data =>
       {
         var joined = data.DeserializePayload<PeerJoinedPayload>();
         SendInitialValue(joined.peerId);
       });
     }
 
-    if (!host)
+    if (!IsHost)
     {
-      networkClient.Subscribe($"sync/{networkIdentity.Id}", e =>
+      Subscribe("sync", e =>
       {
         var data = e.DeserializePayload<NetworkSynchronizerData>();
         var variable = variables[data.index];
@@ -54,7 +40,7 @@ public class NetworkSynchronizer : MonoBehaviour
   float timer = 0f;
   void Update()
   {
-    if (!host) return;
+    if (!IsHost) return;
 
     timer += Time.deltaTime;
 
@@ -74,7 +60,7 @@ public class NetworkSynchronizer : MonoBehaviour
       var variable = variables[i];
       if (!variable.IsUpdated(out var nextValue, out var prevValue)) continue;
       var data = NetworkSynchronizerData.From(i, variable.name, nextValue);
-      networkClient.SendEvent($"sync/{networkIdentity.Id}", EventAudience.Others, data);
+      SendEvent("sync", EventAudience.Others, data);
     }
   }
 
@@ -85,7 +71,7 @@ public class NetworkSynchronizer : MonoBehaviour
       var variable = variables[i];
       var nextValue = variable.GetValue();
       var data = NetworkSynchronizerData.From(i, variable.name, nextValue);
-      networkClient.SendEventTo($"sync/{networkIdentity.Id}", peerId, data);
+      SendEvent("sync", peerId, data);
     }
   }
 
@@ -203,6 +189,7 @@ public class NetworkSynchronizer : MonoBehaviour
     {
       if (fieldInfo == null)
         fieldInfo = component.GetType().GetField(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+      if (fieldInfo == null) throw new InvalidOperationException($"Field '{name}' could not be found on type '{component.GetType().Name}'.");
       return fieldInfo;
     }
 
