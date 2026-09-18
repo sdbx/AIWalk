@@ -5,19 +5,6 @@ using UnityEngine.UIElements;
 [CustomEditor(typeof(NetworkIdentity))]
 public class NetworkIdentityEditor : Editor
 {
-  void OnEnable()
-  {
-    serializedObject.Update();
-    var prop = serializedObject.FindProperty("id");
-
-    if (string.IsNullOrEmpty(prop.stringValue))
-    {
-      prop.stringValue = NetworkIdentity.GenerateId();
-
-      serializedObject.ApplyModifiedProperties();
-    }
-  }
-
   public override VisualElement CreateInspectorGUI()
   {
     var root = new VisualElement();
