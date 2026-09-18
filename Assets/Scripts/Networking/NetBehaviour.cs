@@ -25,11 +25,10 @@ public abstract class NetBehaviour : MonoBehaviour
   protected void Start()
   {
     NetworkClient.GetInstance(ref networkClient);
+    networkIdentity = GetComponent<NetworkIdentity>();
 
     if (networkClient.IsConnected) _onNetworkReady();
     else networkClient.onServerConnected.AddListener(_onNetworkReady);
-
-    networkIdentity = GetComponent<NetworkIdentity>();
 
     OnStart();
   }

@@ -75,8 +75,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d3727ab797544024bbbcdc566e83b730, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NetworkIdentity
-  id: e4a9b0ad725c4abe96be78dea38fc1d8
-  resetOnAwake: 0
+  id: 
+  resetOnAwake: 1
 --- !u!114 &7147422707309949344
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -89,10 +89,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fb224ad13acb1f84fabaf62fc2f8cbca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SyncRigidbody
-  networkIdentity: {fileID: 0}
+  networkIdentity: {fileID: 1260100631446440462}
   networkClient: {fileID: 0}
   syncMode: 1
   syncInterval: 0.1
+  interpolationDuration: 0.1
+  teleportDistance: 3
 --- !u!1 &6418167200623334365
 GameObject:
   m_ObjectHideFlags: 0

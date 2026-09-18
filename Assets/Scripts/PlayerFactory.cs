@@ -8,6 +8,7 @@ public class PlayerFactory : MonoBehaviour, INetworkObjectFactory
     public GameObject Create(NetworkObjectData data)
     {
         var newPlayer = Instantiate(playerPrefab);
+        
         newPlayer.GetComponent<NetworkIdentity>().SetId(data.networkId);
         newPlayer.transform.position = data.position;
         newPlayer.transform.rotation = data.rotation;
