@@ -276,7 +276,7 @@ PrefabInstance:
       addedObject: {fileID: 7902129469584624074}
     - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 3b34a53f3461cfe45918c21c6de87540, type: 3}
       insertIndex: -1
-      addedObject: {fileID: 9054423141253313935}
+      addedObject: {fileID: 8461279720531532985}
     - targetCorrespondingSourceObject: {fileID: -3138404996598467872, guid: 3b34a53f3461cfe45918c21c6de87540, type: 3}
       insertIndex: -1
       addedObject: {fileID: 5559267567217751116}
@@ -304,30 +304,6 @@ MonoBehaviour:
   OnUnlocked:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 6433008237997645055}
-        m_TargetAssemblyTypeName: Bulb, Assembly-CSharp
-        m_MethodName: TurnOn
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
-      - m_Target: {fileID: 239899503796543665}
-        m_TargetAssemblyTypeName: Bulb, Assembly-CSharp
-        m_MethodName: TurnOff
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
       - m_Target: {fileID: 4329768783768427083}
         m_TargetAssemblyTypeName: PasswordPopupController, Assembly-CSharp
         m_MethodName: Hide
@@ -352,9 +328,45 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
+      - m_Target: {fileID: 239899503796543665}
+        m_TargetAssemblyTypeName: Bulb, Assembly-CSharp
+        m_MethodName: TurnOff
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
+      - m_Target: {fileID: 6433008237997645055}
+        m_TargetAssemblyTypeName: Bulb, Assembly-CSharp
+        m_MethodName: TurnOn
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
   OnInvalid:
     m_PersistentCalls:
       m_Calls:
+      - m_Target: {fileID: 4329768783768427083}
+        m_TargetAssemblyTypeName: PasswordPopupController, Assembly-CSharp
+        m_MethodName: ClearAndFocus
+        m_Mode: 1
+        m_Arguments:
+          m_ObjectArgument: {fileID: 0}
+          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
+          m_IntArgument: 0
+          m_FloatArgument: 0
+          m_StringArgument: 
+          m_BoolArgument: 0
+        m_CallState: 2
       - m_Target: {fileID: 239899503796543665}
         m_TargetAssemblyTypeName: Bulb, Assembly-CSharp
         m_MethodName: TurnOn
@@ -379,20 +391,7 @@ MonoBehaviour:
           m_StringArgument: 
           m_BoolArgument: 0
         m_CallState: 2
-      - m_Target: {fileID: 4329768783768427083}
-        m_TargetAssemblyTypeName: PasswordPopupController, Assembly-CSharp
-        m_MethodName: ClearAndFocus
-        m_Mode: 1
-        m_Arguments:
-          m_ObjectArgument: {fileID: 0}
-          m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
-          m_IntArgument: 0
-          m_FloatArgument: 0
-          m_StringArgument: 
-          m_BoolArgument: 0
-        m_CallState: 2
   locked: 1
-  networkController: {fileID: 9054423141253313935}
   password: 
 --- !u!114 &7902129469584624074
 MonoBehaviour:
@@ -406,9 +405,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d3727ab797544024bbbcdc566e83b730, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NetworkIdentity
-  id: bf28021ca0e14a2ebff4449d71139415
+  id: 
   resetOnAwake: 0
---- !u!114 &9054423141253313935
+--- !u!114 &8461279720531532985
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -417,20 +416,17 @@ MonoBehaviour:
   m_GameObject: {fileID: 3677863136085957766}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5a542dcc3b3a2864582d4944e0d58535, type: 3}
+  m_Script: {fileID: 11500000, guid: 619c866cea7905d47a8387db4effa082, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::NetworkController
-  identity: {fileID: 7902129469584624074}
-  eventData: []
-  unityEventReferences:
-  - key: OnUnlocked
-    value:
-    - component: {fileID: 285848283243926047}
-      eventName: OnUnlocked
-  - key: OnInvalid
-    value:
-    - component: {fileID: 285848283243926047}
-      eventName: OnInvalid
+  m_EditorClassIdentifier: Assembly-CSharp::NetworkSynchronizer
+  variables:
+  - component: {fileID: 239899503796543665}
+    name: on
+  - component: {fileID: 6433008237997645055}
+    name: on
+  - component: {fileID: 285848283243926047}
+    name: locked
+  networkUpdateFps: 20
 --- !u!4 &4053720862641620540 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 3b34a53f3461cfe45918c21c6de87540, type: 3}
