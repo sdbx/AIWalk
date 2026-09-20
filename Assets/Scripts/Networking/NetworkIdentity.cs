@@ -5,6 +5,8 @@ public class NetworkIdentity : MonoBehaviour
 {
   [SerializeField]
   private string id;
+  public bool HasId => !string.IsNullOrEmpty(id);
+
   public string Id
   {
     get

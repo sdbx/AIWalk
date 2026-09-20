@@ -20,7 +20,7 @@ public class NetworkClient : MonoBehaviour
     private GameBackendWebSocketClient socketClient;
     private GameBackendEventClient eventClient;
     private readonly object voiceSendLock = new();
-    private readonly Queue<byte[]> voiceSendQueue = new();
+    private readonly Queue<QueuedVoicePacket> voiceSendQueue = new();
     private uint voiceSequence;
     private bool voiceSendLoopRunning;
     private Exception voiceSendError;
@@ -28,7 +28,7 @@ public class NetworkClient : MonoBehaviour
     public UnityEvent onServerConnected{get;private set;} = new UnityEvent();
 
     [SerializeField] private string backendUrl = "ws://localhost:8080";
-    [SerializeField] private int maxMessageBytes = 256 * 1024;
+    [SerializeField] private int maxMessageBytes = 2 * 1024 * 1024;
 
     public bool IsHost => role == "host";
 
@@ -57,7 +57,7 @@ public class NetworkClient : MonoBehaviour
         {
             Instance = this;
         }
-        socketClient = new GameBackendWebSocketClient(256 * 1024);
+        socketClient = new GameBackendWebSocketClient(maxMessageBytes);
         eventClient = new GameBackendEventClient(socketClient);
         InitSubcriptions();
     }
@@ -116,7 +116,7 @@ public class NetworkClient : MonoBehaviour
         socketClient.SubscribePhysicsSnapshot(id,callback);
     }
 
-    public void SendVoicePcm(byte[] pcm16)
+    public void SendVoicePcm(string networkId, byte[] pcm16)
     {
         if (!socketClient.IsConnected)
         {
@@ -126,7 +126,7 @@ public class NetworkClient : MonoBehaviour
 
         lock (voiceSendLock)
         {
-            voiceSendQueue.Enqueue(pcm16);
+            voiceSendQueue.Enqueue(new QueuedVoicePacket(networkId, pcm16));
 
             if (voiceSendLoopRunning)
                 return;
@@ -140,7 +140,7 @@ public class NetworkClient : MonoBehaviour
     {
         while (true)
         {
-            byte[] pcm16;
+            QueuedVoicePacket packet;
             lock (voiceSendLock)
             {
                 if (voiceSendQueue.Count == 0)
@@ -148,12 +148,12 @@ public class NetworkClient : MonoBehaviour
                     voiceSendLoopRunning = false;
                     return;
                 }
-                pcm16 = voiceSendQueue.Dequeue();
+                packet = voiceSendQueue.Dequeue();
             }
 
             try
             {
-                await socketClient.SendVoicePcmAsync(pcm16, voiceSequence++);
+                await socketClient.SendVoicePcmAsync(packet.NetworkId, packet.Pcm16, voiceSequence++);
             }
             catch (Exception exception)
             {
@@ -166,14 +166,26 @@ public class NetworkClient : MonoBehaviour
         }
     }
 
-    public void SubscribeVoice(Action<ushort, byte[]> callback)
+    public void SubscribeVoice(Action<string, byte[]> callback)
     {
         socketClient.RealtimeVoicePcmReceived += callback;
     }
 
-    public void UnsubscribeVoice(Action<ushort, byte[]> callback)
+    public void UnsubscribeVoice(Action<string, byte[]> callback)
     {
         socketClient.RealtimeVoicePcmReceived -= callback;
+    }
+
+    private readonly struct QueuedVoicePacket
+    {
+        public readonly string NetworkId;
+        public readonly byte[] Pcm16;
+
+        public QueuedVoicePacket(string networkId, byte[] pcm16)
+        {
+            NetworkId = networkId;
+            Pcm16 = pcm16;
+        }
     }
     public void SubscribeUnityEvent(string eventName, UnityEvent unityEvent)
     {

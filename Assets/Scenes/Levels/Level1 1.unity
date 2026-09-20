@@ -310,6 +310,10 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 285848283243926047, guid: 3978195430b02cf458e1a1700f580e7b, type: 3}
+      propertyPath: locked
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 285848283243926047, guid: 3978195430b02cf458e1a1700f580e7b, type: 3}
       propertyPath: password
       value: door!
       objectReference: {fileID: 0}
@@ -411,7 +415,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7136891175254446506, guid: 3978195430b02cf458e1a1700f580e7b, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7902129469584624074, guid: 3978195430b02cf458e1a1700f580e7b, type: 3}
       propertyPath: id
@@ -931,6 +935,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 7392704038001796833, guid: d970da5e80e50914989272bd1b6b1c61, type: 3}
+      propertyPath: isOpen
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 7433170708766848479, guid: d970da5e80e50914989272bd1b6b1c61, type: 3}
       propertyPath: m_LocalPosition.x
       value: -15.55
@@ -1290,6 +1298,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 7392704038001796833, guid: d970da5e80e50914989272bd1b6b1c61, type: 3}
+      propertyPath: isOpen
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 7433170708766848479, guid: d970da5e80e50914989272bd1b6b1c61, type: 3}
       propertyPath: m_LocalPosition.x
       value: 2.27

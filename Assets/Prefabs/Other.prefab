@@ -13,6 +13,7 @@ GameObject:
   - component: {fileID: -4461400063864242632}
   - component: {fileID: -2546648817368331735}
   - component: {fileID: 7190563961881449258}
+  - component: {fileID: 6949202051947952227}
   m_Layer: 0
   m_Name: Other
   m_TagString: Untagged
@@ -117,6 +118,25 @@ MonoBehaviour:
   syncInterval: 0.1
   interpolationDuration: 0.1
   teleportDistance: 3
+--- !u!114 &6949202051947952227
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2650042118450859456}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 11342114344f4486891af8f226f2447f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::NetworkVoiceSpeaker
+  networkClient: {fileID: 0}
+  networkIdentity: {fileID: -4461400063864242632}
+  soundOrigin: {fileID: 0}
+  playbackVolume: 1
+  minimumDistance: 1
+  maximumDistance: 20
+  falloffExponent: 1.5
 --- !u!1 &5732655742376624272
 GameObject:
   m_ObjectHideFlags: 0

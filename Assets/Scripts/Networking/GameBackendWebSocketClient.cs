@@ -23,7 +23,8 @@ namespace AIWalk.Networking
         private const byte PhysicsSnapshotKind = 2;
         private const byte VoicePcmKind = 3;
         private const int RealtimeHeaderBytes = 16;
-        public const int PhysicsObjectIdBytes = 32;
+        public const int NetworkIdBytes = 32;
+        public const int PhysicsObjectIdBytes = NetworkIdBytes;
         private readonly object stateLock = new();
         private readonly object physicsHandlersLock = new();
         private readonly SemaphoreSlim lifecycleLock = new(1, 1);
@@ -59,12 +60,12 @@ namespace AIWalk.Networking
         public event Action Connected;
         public event Action<string> TextMessageReceived;
         public event Action<byte[]> BinaryMessageReceived;
-        public event Action<ushort, byte[]> VoicePcmReceived;
+        public event Action<string, byte[]> VoicePcmReceived;
         /// <summary>
         /// Raised directly from the WebSocket receive thread for low-latency voice playback.
         /// Handlers must only copy/process plain data and must not access Unity objects.
         /// </summary>
-        public event Action<ushort, byte[]> RealtimeVoicePcmReceived;
+        public event Action<string, byte[]> RealtimeVoicePcmReceived;
         public event Action<WebSocketCloseStatus?, string> Disconnected;
         public event Action<Exception> TransportError;
 
@@ -259,18 +260,25 @@ namespace AIWalk.Networking
         }
 
         public Task SendVoicePcmAsync(
+            string networkId,
             byte[] pcm16,
             uint sequence,
             CancellationToken cancellationToken = default)
         {
+            ValidateNetworkId(networkId);
             if (pcm16 == null)
                 throw new ArgumentNullException(nameof(pcm16));
             if (pcm16.Length == 0 || pcm16.Length % 2 != 0)
                 throw new ArgumentException("Voice payload must contain PCM16 samples.", nameof(pcm16));
 
+            byte[] networkIdBytes = System.Text.Encoding.UTF8.GetBytes(networkId);
+            var voicePayload = new byte[NetworkIdBytes + pcm16.Length];
+            Buffer.BlockCopy(networkIdBytes, 0, voicePayload, 0, NetworkIdBytes);
+            Buffer.BlockCopy(pcm16, 0, voicePayload, NetworkIdBytes, pcm16.Length);
+
             return SendRealtimeAsync(
                 VoicePcmKind,
-                pcm16,
+                voicePayload,
                 sequence,
                 false,
                 cancellationToken);
@@ -577,14 +585,21 @@ namespace AIWalk.Networking
 
             if (frame[1] == VoicePcmKind)
             {
-                ushort peerSlot = BinaryPrimitives.ReadUInt16LittleEndian(frame.AsSpan(2, 2));
-                int payloadLength = frame.Length - RealtimeHeaderBytes;
+                if (frame.Length < RealtimeHeaderBytes + NetworkIdBytes)
+                    return;
+
+                string networkId = System.Text.Encoding.UTF8.GetString(
+                    frame,
+                    RealtimeHeaderBytes,
+                    NetworkIdBytes);
+                int voicePayloadOffset = RealtimeHeaderBytes + NetworkIdBytes;
+                int payloadLength = frame.Length - voicePayloadOffset;
                 if (payloadLength <= 0 || payloadLength % 2 != 0)
                     return;
 
                 var pcm16 = new byte[payloadLength];
-                Buffer.BlockCopy(frame, RealtimeHeaderBytes, pcm16, 0, payloadLength);
-                InvokeSafely(VoicePcmReceived, peerSlot, pcm16);
+                Buffer.BlockCopy(frame, voicePayloadOffset, pcm16, 0, payloadLength);
+                InvokeSafely(VoicePcmReceived, networkId, pcm16);
                 return;
             }
 
@@ -617,22 +632,38 @@ namespace AIWalk.Networking
         {
             var callback = RealtimeVoicePcmReceived;
             if (callback == null ||
-                frame.Length < RealtimeHeaderBytes ||
+                frame.Length < RealtimeHeaderBytes + NetworkIdBytes ||
                 frame[0] != RealtimeProtocolVersion ||
                 frame[1] != VoicePcmKind)
             {
                 return false;
             }
 
-            int payloadLength = frame.Length - RealtimeHeaderBytes;
+            string networkId = System.Text.Encoding.UTF8.GetString(
+                frame,
+                RealtimeHeaderBytes,
+                NetworkIdBytes);
+            int payloadOffset = RealtimeHeaderBytes + NetworkIdBytes;
+            int payloadLength = frame.Length - payloadOffset;
             if (payloadLength <= 0 || payloadLength % 2 != 0)
                 return true;
 
-            ushort peerSlot = BinaryPrimitives.ReadUInt16LittleEndian(frame.AsSpan(2, 2));
             var pcm16 = new byte[payloadLength];
-            Buffer.BlockCopy(frame, RealtimeHeaderBytes, pcm16, 0, payloadLength);
-            InvokeSafely(callback, peerSlot, pcm16);
+            Buffer.BlockCopy(frame, payloadOffset, pcm16, 0, payloadLength);
+            InvokeSafely(callback, networkId, pcm16);
             return true;
+        }
+
+        private static void ValidateNetworkId(string networkId)
+        {
+            if (networkId == null)
+                throw new ArgumentNullException(nameof(networkId));
+            if (System.Text.Encoding.UTF8.GetByteCount(networkId) != NetworkIdBytes)
+            {
+                throw new ArgumentException(
+                    $"Network ID must be exactly {NetworkIdBytes} UTF-8 bytes.",
+                    nameof(networkId));
+            }
         }
 
         private static void ValidatePhysicsObjectId(string objectId)

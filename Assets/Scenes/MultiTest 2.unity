@@ -2454,7 +2454,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls: []
   backendUrl: ws://localhost:8080
-  maxMessageBytes: 262144
+  maxMessageBytes: 2097152
 --- !u!4 &1986975654
 Transform:
   m_ObjectHideFlags: 0

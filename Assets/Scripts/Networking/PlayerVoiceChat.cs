@@ -14,12 +14,13 @@ public enum AecDoubleTalkPreset
     Custom
 }
 
-[RequireComponent(typeof(AudioSource))]
-public sealed class PlayerVoiceChat : MonoBehaviour
+[RequireComponent(typeof(NetworkIdentity))]
+public class PlayerVoiceChat : MonoBehaviour
 {
     public event Action<float[], float[], float[], float[]> EchoDebugFrameProcessed;
 
     [SerializeField] private NetworkClient networkClient;
+    [SerializeField] private NetworkIdentity networkIdentity;
     [SerializeField] private string microphoneDevice;
     [SerializeField, Range(10, 40)] private int packetMilliseconds = 20;
     [SerializeField, Range(10, 100)] private int jitterMilliseconds = 40;
@@ -48,11 +49,12 @@ public sealed class PlayerVoiceChat : MonoBehaviour
     private const int NoiseFrameMilliseconds = 10;
     private const int MaxEchoReferenceMilliseconds = 500;
     [SerializeField, Range(0f, 2f)] private float playbackVolume = 1f;
+    [SerializeField] private bool legacyMixedPlayback;
 
     private static PlayerVoiceChat activeLocalVoice;
 
     private readonly object playbackBufferRegistrationLock = new();
-    private readonly Dictionary<ushort, VoicePlaybackBuffer> playbackBuffers = new();
+    private readonly Dictionary<string, VoicePlaybackBuffer> playbackBuffers = new(StringComparer.Ordinal);
     private volatile VoicePlaybackBuffer[] playbackBufferSnapshot = Array.Empty<VoicePlaybackBuffer>();
     private readonly ConcurrentQueue<float> echoReferenceSamples = new();
     private int echoReferenceSampleCount;
@@ -83,7 +85,7 @@ public sealed class PlayerVoiceChat : MonoBehaviour
     private float nextVoiceHealthLogTime;
     private int loggedVoiceUnderruns;
 
-    private void Awake()
+    protected virtual void Awake()
     {
         // The scene's original player is created before remote player copies.
         // Only that first instance owns the microphone and the mixed voice output.
@@ -94,12 +96,19 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         }
 
         activeLocalVoice = this;
+        if (networkIdentity == null)
+            networkIdentity = GetComponent<NetworkIdentity>();
         packetMilliseconds = Mathf.Max(10, packetMilliseconds);
         voiceCloseThreshold = Mathf.Min(voiceCloseThreshold, voiceOpenThreshold);
-        voiceOutput = GetComponent<AudioSource>();
-        voiceOutput.playOnAwake = false;
-        voiceOutput.loop = true;
-        voiceOutput.spatialBlend = 0f;
+        if (legacyMixedPlayback)
+        {
+            voiceOutput = GetComponent<AudioSource>();
+            if (voiceOutput == null)
+                voiceOutput = gameObject.AddComponent<AudioSource>();
+            voiceOutput.playOnAwake = false;
+            voiceOutput.loop = true;
+            voiceOutput.spatialBlend = 0f;
+        }
 
         samplesPerPacket = Mathf.Max(1, RnNoiseProcessor.OutputSampleRate * packetMilliseconds / 1000);
         microphoneFrame = new float[RnNoiseProcessor.InputFrameSamples];
@@ -110,13 +119,14 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         networkPacket = new float[samplesPerPacket];
     }
 
-    private void Start()
+    protected virtual void Start()
     {
         if (!enabled)
             return;
 
         NetworkClient.GetInstance(ref networkClient);
-        networkClient.SubscribeVoice(OnVoicePcmReceived);
+        if (legacyMixedPlayback)
+            networkClient.SubscribeVoice(OnVoicePcmReceived);
         StartCoroutine(StartWhenGameReady());
     }
 
@@ -137,11 +147,12 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         }
 
         StartMicrophone();
-        StartPlayback();
+        if (legacyMixedPlayback)
+            StartPlayback();
         Debug.Log("Voice chat started on the existing game connection.", this);
     }
 
-    private void Update()
+    protected virtual void Update()
     {
         if (!enabled)
             return;
@@ -150,7 +161,8 @@ public sealed class PlayerVoiceChat : MonoBehaviour
             appliedEchoConfigurationHash != CalculateEchoConfigurationHash())
             ApplyEchoCancellationSetting();
         CaptureMicrophone();
-        LogVoiceHealthIfNeeded();
+        if (legacyMixedPlayback)
+            LogVoiceHealthIfNeeded();
     }
 
     public void SetEchoCancellation(bool enabled)
@@ -463,27 +475,27 @@ public sealed class PlayerVoiceChat : MonoBehaviour
             BinaryPrimitives.WriteInt16LittleEndian(pcm16.AsSpan(i * 2, 2), pcm);
         }
 
-        networkClient.SendVoicePcm(pcm16);
+        networkClient.SendVoicePcm(networkIdentity.Id, pcm16);
     }
 
-    private void OnVoicePcmReceived(ushort senderSlot, byte[] pcm16)
+    private void OnVoicePcmReceived(string sourceNetworkId, byte[] pcm16)
     {
         if (shuttingDown)
             return;
         if (pcm16 == null || pcm16.Length == 0 || pcm16.Length % 2 != 0)
             return;
-        if (senderSlot == networkClient.peerSlot)
+        if (string.Equals(sourceNetworkId, networkIdentity.Id, StringComparison.Ordinal))
             return;
 
         VoicePlaybackBuffer buffer;
         lock (playbackBufferRegistrationLock)
         {
-            if (!playbackBuffers.TryGetValue(senderSlot, out buffer))
+            if (!playbackBuffers.TryGetValue(sourceNetworkId, out buffer))
             {
                 buffer = new VoicePlaybackBuffer(
                     RnNoiseProcessor.OutputSampleRate * 2,
                     RnNoiseProcessor.OutputSampleRate * jitterMilliseconds / 1000);
-                playbackBuffers.Add(senderSlot, buffer);
+                playbackBuffers.Add(sourceNetworkId, buffer);
                 playbackBufferSnapshot = new List<VoicePlaybackBuffer>(playbackBuffers.Values).ToArray();
             }
         }
@@ -562,14 +574,15 @@ public sealed class PlayerVoiceChat : MonoBehaviour
         }
     }
 
-    private void OnDestroy()
+    protected virtual void OnDestroy()
     {
         shuttingDown = true;
         if (activeLocalVoice != this)
             return;
 
         activeLocalVoice = null;
-        networkClient?.UnsubscribeVoice(OnVoicePcmReceived);
+        if (legacyMixedPlayback)
+            networkClient?.UnsubscribeVoice(OnVoicePcmReceived);
         string device = string.IsNullOrWhiteSpace(microphoneDevice) ? null : microphoneDevice;
         if (Microphone.IsRecording(device))
             Microphone.End(device);
