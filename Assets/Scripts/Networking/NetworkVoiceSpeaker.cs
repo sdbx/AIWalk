@@ -67,6 +67,7 @@ public sealed class NetworkVoiceSpeaker : MonoBehaviour
             yield break;
 
         networkClient.SubscribeVoice(OnVoicePcmReceived);
+        networkClient.SubscribeLocalVoice(OnLocalVoicePcmSent);
         subscribed = true;
     }
 
@@ -119,6 +120,16 @@ public sealed class NetworkVoiceSpeaker : MonoBehaviour
 
     private void OnVoicePcmReceived(string sourceNetworkId, byte[] pcm16)
     {
+        ForwardPcm(sourceNetworkId, pcm16, false);
+    }
+
+    private void OnLocalVoicePcmSent(string sourceNetworkId, byte[] pcm16)
+    {
+        ForwardPcm(sourceNetworkId, pcm16, true);
+    }
+
+    private void ForwardPcm(string sourceNetworkId, byte[] pcm16, bool isLocalMicrophone)
+    {
         if (shuttingDown || !string.Equals(sourceNetworkId, NetworkId, StringComparison.Ordinal))
             return;
         if (pcm16 == null || pcm16.Length == 0 || pcm16.Length % 2 != 0)
@@ -126,7 +137,7 @@ public sealed class NetworkVoiceSpeaker : MonoBehaviour
 
         IngameMicrophone[] listeners = listenerSnapshot;
         for (int i = 0; i < listeners.Length; i++)
-            listeners[i]?.ReceivePcm(this, pcm16);
+            listeners[i]?.ReceivePcm(this, pcm16, isLocalMicrophone);
     }
 
     private void OnDisable()
@@ -135,6 +146,7 @@ public sealed class NetworkVoiceSpeaker : MonoBehaviour
         if (subscribed)
         {
             networkClient?.UnsubscribeVoice(OnVoicePcmReceived);
+            networkClient?.UnsubscribeLocalVoice(OnLocalVoicePcmSent);
             subscribed = false;
         }
         lock (ActiveLock)

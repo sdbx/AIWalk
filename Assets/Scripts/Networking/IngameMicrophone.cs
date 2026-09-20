@@ -6,6 +6,15 @@ using System.Threading;
 using UnityEngine;
 
 [Serializable]
+public sealed class RecordedVoiceAudioPayload
+{
+    public string encoding;
+    public int sampleRate;
+    public int channels;
+    public string pcmBase64;
+}
+
+[Serializable]
 public sealed class RecordedVoiceAudio
 {
     public readonly byte[] Pcm16;
@@ -13,6 +22,22 @@ public sealed class RecordedVoiceAudio
     public readonly int Channels;
 
     public float DurationSeconds => Pcm16.Length / 2f / Channels / SampleRate;
+
+    public string ToBase64()
+    {
+        return Convert.ToBase64String(Pcm16);
+    }
+
+    public RecordedVoiceAudioPayload ToServerData()
+    {
+        return new RecordedVoiceAudioPayload
+        {
+            encoding = "pcm_s16le",
+            sampleRate = SampleRate,
+            channels = Channels,
+            pcmBase64 = ToBase64()
+        };
+    }
 
     public RecordedVoiceAudio(byte[] pcm16, int sampleRate, int channels)
     {
@@ -28,6 +53,7 @@ public sealed class IngameMicrophone : MonoBehaviour
 
     [SerializeField] private Transform listeningPosition;
     [SerializeField] private AudioSource outputAudioSource;
+    [SerializeField] private bool includeLocalNetworkVoice;
     [SerializeField, Range(0, 100)] private int jitterMilliseconds = 40;
     [SerializeField, Range(0f, 4f)] private float listenerGain = 1f;
     [SerializeField, Range(0f, 4f)] private float recordingGain = 1f;
@@ -44,6 +70,11 @@ public sealed class IngameMicrophone : MonoBehaviour
     private AudioClip outputClip;
 
     public bool IsRecording => isRecording;
+    public bool IncludeLocalNetworkVoice
+    {
+        get => includeLocalNetworkVoice;
+        set => includeLocalNetworkVoice = value;
+    }
 
     private void Awake()
     {
@@ -159,8 +190,14 @@ public sealed class IngameMicrophone : MonoBehaviour
         }
     }
 
-    internal void ReceivePcm(NetworkVoiceSpeaker speaker, byte[] pcm16)
+    internal void ReceivePcm(
+        NetworkVoiceSpeaker speaker,
+        byte[] pcm16,
+        bool isLocalMicrophone)
     {
+        if (isLocalMicrophone && !includeLocalNetworkVoice)
+            return;
+
         SourceState state;
         lock (sourceLock)
         {

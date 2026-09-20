@@ -24,6 +24,7 @@ public class NetworkClient : MonoBehaviour
     private uint voiceSequence;
     private bool voiceSendLoopRunning;
     private Exception voiceSendError;
+    private event Action<string, byte[]> LocalVoicePcmSent;
     [field:SerializeField]
     public UnityEvent onServerConnected{get;private set;} = new UnityEvent();
 
@@ -124,6 +125,8 @@ public class NetworkClient : MonoBehaviour
             return;
         }
 
+        LocalVoicePcmSent?.Invoke(networkId, pcm16);
+
         lock (voiceSendLock)
         {
             voiceSendQueue.Enqueue(new QueuedVoicePacket(networkId, pcm16));
@@ -174,6 +177,16 @@ public class NetworkClient : MonoBehaviour
     public void UnsubscribeVoice(Action<string, byte[]> callback)
     {
         socketClient.RealtimeVoicePcmReceived -= callback;
+    }
+
+    public void SubscribeLocalVoice(Action<string, byte[]> callback)
+    {
+        LocalVoicePcmSent += callback;
+    }
+
+    public void UnsubscribeLocalVoice(Action<string, byte[]> callback)
+    {
+        LocalVoicePcmSent -= callback;
     }
 
     private readonly struct QueuedVoicePacket
@@ -249,6 +262,7 @@ public class NetworkClient : MonoBehaviour
 
     private void OnDestroy()
     {
+        LocalVoicePcmSent = null;
         eventClient?.Dispose();
         socketClient?.Dispose();
 
