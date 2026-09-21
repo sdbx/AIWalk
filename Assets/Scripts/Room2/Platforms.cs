@@ -12,7 +12,7 @@ struct PlatformData
 }
 
 
-public class NewMonoBehaviourScript : NetBehaviour
+public class Platforms : NetBehaviour
 {
     [SerializeField]
     private Dictionary<string,Platform> platforms = new Dictionary<string,Platform>();
@@ -20,19 +20,21 @@ public class NewMonoBehaviourScript : NetBehaviour
    
     protected override void OnNetworkReady()
     {
-        Subscribe("platfrom.move",OnPlatformEvent);
+        Subscribe("platform.move",OnPlatformEvent);
     }
 
     private void OnPlatformEvent(GameBackendEvent e)
     {
+
         PlatformData platformData = e.DeserializePayload<PlatformData>();
+        Debug.Log(platformData.id+"플랫폼"+platformData.height);
         if (platforms.TryGetValue(platformData.id, out var platform))
         {
             platform.moveTo(platformData.height);
         }
         else if (IsHost)
         {
-            SendEvent("platform.wrong",EventAudience.Api,platformData.id);
+            SendEvent("platform.wrong",EventAudience.Api,platformData);
         }
     }
 }

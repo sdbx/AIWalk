@@ -13,8 +13,11 @@ public class Plate : MonoBehaviour
 
     [SerializeField]
     private bool isActivated = true;
+    public bool IsActivated => isActivated;
+
     [SerializeField]
     private bool isPressed = false;
+    public bool IsPressed => isPressed;
 
     [field: SerializeField]
     public UnityEvent OnPlatePressed { get; private set; } = new();

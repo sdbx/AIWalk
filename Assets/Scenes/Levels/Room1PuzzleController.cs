@@ -35,12 +35,51 @@ public class Room1PuzzleController : MonoBehaviour
   [SerializeField]
   private string answer = "test";
 
+  [SerializeField]
+  private Plate plate1;
+
+  [SerializeField]
+  private Plate plate2;
+
+  [SerializeField]
+  private Door door1;
+
+  [SerializeField]
+  private Door door2;
+
+
+
+
+
+
   void Awake()
   {
     SetupMonitor();
     CreateKeyboard();
     CreateLeds();
     BindKeyboardAndLeds();
+
+
+    plate1.OnPlatePressed.AddListener(OnPlatePressed);
+    plate2.OnPlatePressed.AddListener(OnPlatePressed);
+    plate1.OnPlateReleased.AddListener(OnPlateReleased);
+    plate2.OnPlateReleased.AddListener(OnPlateReleased);
+  }
+
+
+  private void OnPlatePressed()
+  {
+    if (plate1.IsPressed && plate2.IsPressed)
+    {
+      door1.OpenDoor();
+      door2.OpenDoor();
+    }
+  }
+
+  private void OnPlateReleased()
+  {
+    door1.CloseDoor();
+    door2.CloseDoor();
   }
 
   void SetupMonitor()
